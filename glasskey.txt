@@ -1,0 +1,1417 @@
+/\* eslint-disable \*/\
+// Single Glass Keyboard — Originkit\
+\
+// Delivered by Originkit · stack: nextjs\
+"use client";\
+\
+const ControlType = new Proxy({}, { get: (\_, k) => String(k) });\
+\
+"use client"\
+\
+/\*\*\
+&#x20;\* BerylCap — a clear glass "esc." keycap, raymarched in WebGL2. Studio\
+&#x20;\* softboxes in orange, magenta and blue pour through it, split into spectral\
+&#x20;\* fringes; its bevels catch white rims, it floats, turns and presses itself\
+&#x20;\* every few seconds. The pointer is read against the key itself: as it comes\
+&#x20;\* near, the key turns to face it and drifts toward it, and a hand-held light\
+&#x20;\* follows the cursor through and across the glass; resting on the key sinks\
+&#x20;\* it part way like a fingertip, and a click presses it home.\
+&#x20;\*\
+&#x20;\* Refined from the user's GlassKeycap. Every control it had is kept under the\
+&#x20;\* same key, title, type, range and unit; Placement is new.\
+&#x20;\*\
+&#x20;\* @framerSupportedLayoutWidth any\
+&#x20;\* @framerSupportedLayoutHeight any\
+&#x20;\* @framerIntrinsicWidth 1200\
+&#x20;\* @framerIntrinsicHeight 800\
+&#x20;\*/\
+import { useEffect, useRef, useState } from "react"\
+import type { CSSProperties } from "react"\
+\
+// ── moved controls (builder) ──\
+/\*\*\
+&#x20;\* Controls moved in the builder: into Advanced, out of it, or into groups of\
+&#x20;\* their own. The code reads each one where it was first written, so the props\
+&#x20;\* are put back in that shape before anything reads them.\
+&#x20;\*/\
+const MOVED_CONTROLS: { into: Record\<string, string>; out: Record\<string, string> } = {"into":{},"out":{"hover":"advanced"}}\
+const GROUP_FALLBACKS: Record\<string, any> = {  }\
+function withMovedControls(props: any): any {\
+&#x20;   const out = { ...props }\
+&#x20;   for (const [k, g] of Object.entries(MOVED_CONTROLS.into)) out[k] = props?.[g]?.[k] ?? GROUP_FALLBACKS[g]?.[k]\
+&#x20;   for (const [k, g] of Object.entries(MOVED_CONTROLS.out)) {\
+&#x20;       if (out[k] !== undefined) out[g] = { ...(out[g] ?? {}), [k]: out[k] }\
+&#x20;   }\
+&#x20;   return out\
+}\
+// ── /moved controls ──\
+\
+/\*\* Tuning values behind the look. Out of the box these are the look. \*/\
+const DEFAULT_ADVANCED = {\
+&#x20;   turn: 41,\
+&#x20;   elevation: 47,\
+&#x20;   capHeight: 61,\
+&#x20;   topRatio: 67,\
+&#x20;   cornerRadius: 8,\
+&#x20;   dishDepth: 4,\
+&#x20;   wall: 10,\
+&#x20;   tiltRange: 12,\
+&#x20;   nodRange: 5,\
+&#x20;   bobAmount: 5,\
+&#x20;   driftPeriod: 8000,\
+&#x20;   lightPeriod: 12000,\
+&#x20;   pressInterval: 6,\
+&#x20;   pressDepth: 10,\
+&#x20;   pressTilt: 2,\
+&#x20;   pressDamping: 52,\
+&#x20;   ior: 155,\
+&#x20;   lightIntensity: 100,\
+&#x20;   rimStrength: 100,\
+&#x20;   rimPower: 30,\
+&#x20;   glow: 8,\
+&#x20;   light1Color: "#FF5A2A",\
+&#x20;   light1Angle: 172,\
+&#x20;   light2Color: "#FF3FA8",\
+&#x20;   light2Angle: 152,\
+&#x20;   light3Color: "#3A5BFF",\
+&#x20;   light3Angle: 186,\
+&#x20;   light4Color: "#D8D6E6",\
+&#x20;   light4Angle: 183,\
+&#x20;   keyColor: "#F4F4FF",\
+&#x20;   keyAngle: 0,\
+&#x20;   keyHeight: 65,\
+&#x20;   hover: 50,\
+&#x20;   grain: 35,\
+&#x20;   vignette: 0,\
+}\
+type Advanced = typeof DEFAULT_ADVANCED\
+\
+interface Placement {\
+&#x20;   x: number\
+&#x20;   y: number\
+&#x20;   angle: number\
+&#x20;   tilt: number\
+}\
+const DEFAULT_PLACEMENT: Placement = { x: 0, y: 0, angle: 0, tilt: 0 }\
+\
+/\*\* Where the print sits on the top face and how it is drawn. \*/\
+interface Print {\
+&#x20;   x: number\
+&#x20;   y: number\
+&#x20;   size: number\
+&#x20;   angle: number\
+&#x20;   tint: boolean\
+}\
+const DEFAULT_PRINT: Print = { x: 0, y: 0, size: 100, angle: 0, tint: true }\
+\
+/\*\* ControlType.File gives a URL; older or hand-written props may pass { src }. \*/\
+type ImageSource = string | { src?: string } | null | undefined\
+function srcOf(v: ImageSource): string {\
+&#x20;   return typeof v === "string" ? v : v?.src || ""\
+}\
+\
+interface LegendFont {\
+&#x20;   fontFamily?: string\
+&#x20;   fontWeight?: number | string\
+&#x20;   fontStyle?: string\
+&#x20;   fontSize?: number | string\
+&#x20;   letterSpacing?: string\
+&#x20;   lineHeight?: string\
+}\
+\
+export interface BerylCapProps {\
+&#x20;   /\*\* Text printed on the top of the key. \*/\
+&#x20;   legend?: string\
+&#x20;   /\*\* SVG or image printed in place of the legend text. \*/\
+&#x20;   mark?: ImageSource\
+&#x20;   background?: string\
+&#x20;   font?: LegendFont\
+&#x20;   legendColor?: string\
+&#x20;   print?: Partial\<Print>\
+&#x20;   /\*\* Height of the keycap on the stage, in px; capped so the key fits the frame. \*/\
+&#x20;   size?: number\
+&#x20;   /\*\* Strength of the spectral split in the glass. \*/\
+&#x20;   dispersion?: number\
+&#x20;   placement?: Partial\<Placement>\
+&#x20;   /\*\* Drift, light sweep and press tempo. Motion is a hand-rolled loop, so there is no Transition row. \*/\
+&#x20;   speed?: number\
+&#x20;   advanced?: Partial\<Advanced>\
+&#x20;   style?: CSSProperties\
+}\
+\
+/\*\* Camera distance in key units: a long lens, fitted to the reference's perspective. \*/\
+const EYE = 13\
+\
+const VERT = \`#version 300 es\
+void main() {\
+&#x20;   vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\
+&#x20;   gl_Position = vec4(p \* 2.0 - 1.0, 0.0, 1.0);\
+}\`\
+\
+// Everything about the cap is solved in its own frame: the eye ray is turned\
+// into object space once, so the SDF never pays for a matrix per step.\
+const FRAG = \`#version 300 es\
+precision highp float;\
+out vec4 outColor;\
+\
+uniform vec2 uCentre;\
+uniform float uPx;\
+uniform vec2 uRoll;\
+uniform mat3 uInv;\
+uniform vec3 uOff;\
+uniform vec3 uTarget;\
+uniform float uElev;\
+uniform vec4 uShape;\
+uniform vec3 uDish;\
+uniform vec2 uWall;\
+uniform vec2 uIor;\
+uniform float uEnvRot;\
+uniform vec3 uC0;\
+uniform vec3 uC1;\
+uniform vec3 uC2;\
+uniform vec3 uC3;\
+uniform vec4 uAz;\
+uniform vec3 uKeyCol;\
+uniform vec2 uKeyDir;\
+uniform vec3 uPtr;\
+uniform float uPtrGain;\
+uniform vec4 uPL;\
+uniform float uLight;\
+uniform float uRim;\
+uniform float uRimPow;\
+uniform float uGlow;\
+uniform sampler2D uLegend;\
+uniform vec3 uLegendCol;\
+uniform float uLegendSize;\
+uniform float uLegLod;\
+uniform float uTint;\
+uniform vec3 uBg;\
+uniform float uGrain;\
+uniform float uSeed;\
+uniform float uVig;\
+uniform vec2 uRes;\
+\
+const float PI = 3.14159265;\
+const float TAU = 6.28318531;\
+// Spectral samples per exit ray: six hues read as a continuous rainbow fringe\
+// where three RGB taps show hard red/green/blue ghosts.\
+const int NS = 6;\
+const float EYE = ${EYE.toFixed(1)};\
+// Rounding of the bottom edges; the top lip takes uDish.z.\
+const float BOTTOM_ROUND = 0.03;\
+// Interfaces followed per ray before giving up on light trapped by total\
+// internal reflection: in, out to the cavity, in again, out is four.\
+const int EV = 7;\
+\
+float smax(float a, float b, float k) {\
+&#x20;   float h = max(k - abs(a - b), 0.0) / k;\
+&#x20;   return max(a, b) + h \* h \* k \* 0.25;\
+}\
+\
+// Tapered rounded box, bw half-wide at the base, narrowing by s per unit up.\
+// "open" drops the bottom face, which is how the cavity runs out of the cap.\
+float sdFrustum(vec3 p, float bw, float s, float h, float r, float eTop, float eBot, bool open) {\
+&#x20;   float y = clamp(p.y, 0.0, h);\
+&#x20;   float w = bw - s \* y;\
+&#x20;   float corner = min(r \* (1.0 - 0.3 \* y / h), w \* 0.95);\
+&#x20;   vec2 q = abs(p.xz) - vec2(w - corner);\
+&#x20;   float dSide = (length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - corner) / sqrt(1.0 + s \* s);\
+&#x20;   float dY = open ? p.y - h : abs(p.y - h \* 0.5) - h \* 0.5;\
+&#x20;   float e = p.y > h \* 0.5 ? eTop : eBot;\
+&#x20;   vec2 m = vec2(dSide + e, dY + e);\
+&#x20;   return length(max(m, 0.0)) + min(max(m.x, m.y), 0.0) - e;\
+}\
+\
+// The cap is a shell, as a real keycap is: an outer frustum with a dished top,\
+// hollowed by a cavity open at the bottom. uWall = (side wall, cavity ceiling);\
+// a zero wall makes it the solid block of the original.\
+float sdCap(vec3 p) {\
+&#x20;   float bw = uShape.x;\
+&#x20;   float h = uShape.z;\
+&#x20;   float s = (bw - uShape.y) / h;\
+&#x20;   float d = sdFrustum(p, bw, s, h, uShape.w, uDish.z, BOTTOM_ROUND, false);\
+&#x20;   // Spherical dish, blended into the lip so the rim rolls over instead of creasing.\
+&#x20;   d = smax(d, -(length(p - vec3(0.0, h + 3.0 - uDish.y, 0.0)) - 3.0), 0.05);\
+&#x20;   if (uWall.x > 0.0) d = max(d, -sdFrustum(p, bw - uWall.x, s, uWall.y, max(uShape.w - uWall.x, 0.02), 0.05, 0.0, true));\
+&#x20;   return d;\
+}\
+\
+// Exit distance from inside the glass through the outer skin, solved exactly\
+// against the four tapered walls, the base, the top plane and the dish sphere.\
+// Rounding is left to calcN at the exit, so a leg costs no march at all.\
+float exitT(vec3 p, vec3 d) {\
+&#x20;   float bw = uShape.x;\
+&#x20;   float h = uShape.z;\
+&#x20;   float s = (bw - uShape.y) / h;\
+&#x20;   float t = 1e4;\
+&#x20;   float dn = d.x + s \* d.y;\
+&#x20;   if (dn > 0.0) t = min(t, (bw - p.x - s \* p.y) / dn);\
+&#x20;   dn = -d.x + s \* d.y;\
+&#x20;   if (dn > 0.0) t = min(t, (bw + p.x - s \* p.y) / dn);\
+&#x20;   dn = d.z + s \* d.y;\
+&#x20;   if (dn > 0.0) t = min(t, (bw - p.z - s \* p.y) / dn);\
+&#x20;   dn = -d.z + s \* d.y;\
+&#x20;   if (dn > 0.0) t = min(t, (bw + p.z - s \* p.y) / dn);\
+&#x20;   if (d.y < 0.0) t = min(t, -p.y / d.y);\
+&#x20;   if (d.y > 0.0) t = min(t, (h - p.y) / d.y);\
+&#x20;   vec3 oc = p - vec3(0.0, h + 3.0 - uDish.y, 0.0);\
+&#x20;   float b = dot(oc, d);\
+&#x20;   float disc = b \* b - (dot(oc, oc) - 9.0);\
+&#x20;   if (disc > 0.0) {\
+&#x20;       float t0 = -b - sqrt(disc);\
+&#x20;       if (t0 > 0.0) t = min(t, t0);\
+&#x20;   }\
+&#x20;   return max(t, 0.0);\
+}\
+\
+// One half-space n.x <= o of the convex cavity, folded into the ray's\
+// (enter, leave) interval; fl marks when that crossing is the open floor.\
+void halfSpace(vec3 nrm, float o, vec3 p, vec3 d, bool isFloor, inout vec2 tt, inout bvec2 fl) {\
+&#x20;   float nd = dot(nrm, d);\
+&#x20;   float np = dot(nrm, p);\
+&#x20;   if (abs(nd) < 1e-6) {\
+&#x20;       if (np > o) tt.x = 1e5;\
+&#x20;       return;\
+&#x20;   }\
+&#x20;   float t = (o - np) / nd;\
+&#x20;   if (nd > 0.0) {\
+&#x20;       if (t < tt.y) {\
+&#x20;           tt.y = t;\
+&#x20;           fl.y = isFloor;\
+&#x20;       }\
+&#x20;   } else if (t > tt.x) {\
+&#x20;       tt.x = t;\
+&#x20;       fl.x = isFloor;\
+&#x20;   }\
+}\
+\
+// The cavity: four walls parallel to the skin, a ceiling, and the open floor at y = 0.\
+vec2 cavity(vec3 p, vec3 d, out bvec2 fl) {\
+&#x20;   float s = (uShape.x - uShape.y) / uShape.z;\
+&#x20;   float bi = uShape.x - uWall.x;\
+&#x20;   vec2 tt = vec2(-1e4, 1e4);\
+&#x20;   fl = bvec2(false);\
+&#x20;   halfSpace(vec3(1.0, s, 0.0), bi, p, d, false, tt, fl);\
+&#x20;   halfSpace(vec3(-1.0, s, 0.0), bi, p, d, false, tt, fl);\
+&#x20;   halfSpace(vec3(0.0, s, 1.0), bi, p, d, false, tt, fl);\
+&#x20;   halfSpace(vec3(0.0, s, -1.0), bi, p, d, false, tt, fl);\
+&#x20;   halfSpace(vec3(0.0, 1.0, 0.0), uWall.y, p, d, false, tt, fl);\
+&#x20;   halfSpace(vec3(0.0, -1.0, 0.0), 0.0, p, d, true, tt, fl);\
+&#x20;   return tt;\
+}\
+\
+// Normal filtered to the pixel's footprint (e): bevels and the cavity's inner\
+// edges thinner than a pixel blend instead of flickering face to face.\
+vec3 calcN(vec3 p, float e) {\
+&#x20;   const vec2 k = vec2(1.0, -1.0);\
+&#x20;   return normalize(\
+&#x20;       k.xyy \* sdCap(p + k.xyy \* e) +\
+&#x20;       k.yyx \* sdCap(p + k.yyx \* e) +\
+&#x20;       k.yxy \* sdCap(p + k.yxy \* e) +\
+&#x20;       k.xxx \* sdCap(p + k.xxx \* e));\
+}\
+\
+// One studio strip light, laid in azimuth/elevation: a long bar at angle\
+// \\\`ang\\\`, \\\`len\\\` long and \\\`wid\\\` wide (radians). Its centre line burns toward\
+// white and its brightness ramps along its length, so every bar carries its\
+// own gradient into the glass.\
+vec3 strip(float az, float el, vec3 c, float a0, float e0, float ang, float len, float wid) {\
+&#x20;   vec2 q = vec2((mod(az - a0 + PI, TAU) - PI) \* cos(e0), el - e0);\
+&#x20;   float ca = cos(ang);\
+&#x20;   float sa = sin(ang);\
+&#x20;   vec2 r = vec2(ca \* q.x + sa \* q.y, ca \* q.y - sa \* q.x);\
+&#x20;   float along = 1.0 - smoothstep(len \* 0.55, len, abs(r.x));\
+&#x20;   float x = abs(r.y) / wid;\
+&#x20;   float body = 1.0 - smoothstep(0.45, 1.0, x);\
+&#x20;   float core = exp(-x \* x \* 6.0);\
+&#x20;   float ramp = 0.65 + 0.35 \* r.x / len;\
+&#x20;   return c \* along \* ramp \* (body \* 0.3 + core \* 2.4);\
+}\
+\
+vec3 env(vec3 d) {\
+&#x20;   float el = asin(clamp(d.y, -1.0, 1.0));\
+&#x20;   float az0 = atan(d.x, d.z);\
+&#x20;   float az = az0 - uEnvRot;\
+&#x20;   // Dark studio: a faint ceiling, so nothing reads as void.\
+&#x20;   vec3 c = vec3(0.003, 0.003, 0.005) + vec3(0.012, 0.011, 0.02) \* smoothstep(-0.2, 0.9, d.y);\
+&#x20;   // Laid out from the reference. Seen through a hollow cap, every face looks\
+&#x20;   // into the same patch of the studio, behind and below the key, so that is\
+&#x20;   // where each light's main bar sits; its twin elsewhere is what the faces\
+&#x20;   // catch as the key turns and the lights sweep round.\
+&#x20;   float r = 0.01745;\
+&#x20;   // Upright bars: each wall maps azimuth across its width and elevation up its\
+&#x20;   // height, so tall narrow lights are what draw the reference's vertical streaks.\
+&#x20;   vec3 s = strip(az, el, uC0, uAz.x, -36.0 \* r, 0.2, 0.3, 0.09);\
+&#x20;   s += strip(az, el, uC0, uAz.x + 33.0 \* r, -42.0 \* r, 1.45, 0.3, 0.04);\
+&#x20;   s += strip(az, el, uC0, uAz.x, -70.0 \* r, 0.0, 0.6, 0.035) \* 0.35;\
+&#x20;   s += strip(az, el, uC1, uAz.y, -42.0 \* r, 1.5707, 0.35, 0.03);\
+&#x20;   s += strip(az, el, uC1, uAz.y + 20.0 \* r, -49.0 \* r, 1.5707, 0.1, 0.03);\
+&#x20;   s += strip(az, el, uC1, uAz.y + 130.0 \* r, 20.0 \* r, 1.3, 0.7, 0.08);\
+&#x20;   s += strip(az, el, uC2, uAz.z, -45.0 \* r, 1.5707, 0.3, 0.018) \* 0.6;\
+&#x20;   s += strip(az, el, uC2, uAz.z, 38.0 \* r, 0.05, 1.0, 0.1);\
+&#x20;   s += strip(az, el, uC3, uAz.w, -30.0 \* r, 1.5707, 0.45, 0.1) \* 0.04;\
+&#x20;   s += strip(az, el, uC3, uAz.w - 123.0 \* r, 20.0 \* r, 1.5, 0.75, 0.05);\
+&#x20;   // Thin white bars beside the colour: they draw the crisp lines in the glass.\
+&#x20;   s += strip(az, el, vec3(1.0), uAz.x + 28.0 \* r, -55.0 \* r, 0.05, 0.3, 0.025) \* 1.2;\
+&#x20;   s += strip(az, el, vec3(1.0), uAz.x + 43.0 \* r, -40.0 \* r, 1.5707, 0.3, 0.012);\
+&#x20;   s += strip(az, el, vec3(1.0), uAz.z, 47.0 \* r, 0.0, 0.6, 0.02) \* 0.8;\
+&#x20;   s += strip(az, el, vec3(1.0), uAz.x - 8.0 \* r, -25.0 \* r, 1.45, 0.3, 0.02);\
+&#x20;   c += s \* uLight;\
+&#x20;   // The pointer is a hand-held light: one behind the key that the glass\
+&#x20;   // carries through to the viewer, one in front that the faces reflect.\
+&#x20;   if (uPL.z > 0.0) {\
+&#x20;       c += strip(az0, el, uKeyCol, PI - uPL.x, -40.0 \* r + uPL.y, 1.5707, 0.35, 0.05) \* uPL.z \* 1.4;\
+&#x20;       c += strip(az0, el, uKeyCol, uPL.x, 35.0 \* r + uPL.y, 0.0, 0.3, 0.08) \* uPL.z \* 0.9;\
+&#x20;   }\
+&#x20;   // Key light rides with the camera, not the sweep, so the ridges always catch it.\
+&#x20;   c += strip(az0, el, uKeyCol, uKeyDir.x, uKeyDir.y, 0.0, 0.3, 0.12) \* 1.2;\
+&#x20;   return c;\
+}\
+\
+uint hashU(uvec3 v) {\
+&#x20;   uint x = v.x \* 1597334677u ^ v.y \* 3812015801u ^ v.z \* 2798796415u;\
+&#x20;   x ^= x >> 16;\
+&#x20;   x \*= 2246822519u;\
+&#x20;   x ^= x >> 13;\
+&#x20;   return x;\
+}\
+\
+// One eye ray through canvas point frag, shaded and composited on the stage.\
+// sig tells main which light path it took, so main can spot edges.\
+vec3 sampleAt(vec2 frag, out float sig) {\
+&#x20;   sig = 0.0;\
+&#x20;   vec2 uv = (frag - uCentre) / uPx;\
+&#x20;   uv = mat2(uRoll.x, uRoll.y, -uRoll.y, uRoll.x) \* uv;\
+&#x20;   float se = sin(uElev);\
+&#x20;   float ce = cos(uElev);\
+&#x20;   vec3 fwd = -vec3(0.0, se, ce);\
+&#x20;   vec3 up = vec3(0.0, ce, -se);\
+&#x20;   vec3 rdW = normalize(vec3(uv.x, 0.0, 0.0) + up \* uv.y + fwd \* EYE);\
+&#x20;   vec3 roW = uTarget - fwd \* EYE;\
+&#x20;   mat3 toW = transpose(uInv);\
+&#x20;   vec3 ro = uInv \* (roW - uOff);\
+&#x20;   vec3 rd = uInv \* rdW;\
+\
+&#x20;   float bw = uShape.x;\
+&#x20;   float h = uShape.z;\
+&#x20;   float pxW = 1.0 / uPx;\
+&#x20;   vec3 col = vec3(0.0);\
+&#x20;   float glass = 0.0;\
+&#x20;   float legA = 0.0;\
+&#x20;   vec3 legC = vec3(0.0);\
+\
+&#x20;   // Slab test against the cap's box (plus a glow margin): pixels that miss it\
+&#x20;   // never march, and those that hit start at the box.\
+&#x20;   float mg = 0.2;\
+&#x20;   vec3 inv = 1.0 / rd;\
+&#x20;   vec3 t0 = (vec3(-bw - mg, -mg, -bw - mg) - ro) \* inv;\
+&#x20;   vec3 t1 = (vec3(bw + mg, h + mg, bw + mg) - ro) \* inv;\
+&#x20;   vec3 tmn = min(t0, t1);\
+&#x20;   vec3 tmx = max(t0, t1);\
+&#x20;   float tN = max(max(tmn.x, tmn.y), max(tmn.z, 0.0));\
+&#x20;   float tF = min(min(tmx.x, tmx.y), tmx.z);\
+\
+&#x20;   if (tN < tF) {\
+&#x20;       float t = 0.0;\
+&#x20;       float minD = 1e9;\
+&#x20;       bool hit = false;\
+&#x20;       float eps = max(0.0004, pxW \* 0.3);\
+&#x20;       // The rounded cap sits inside its sharp hull, which is convex: intersect\
+&#x20;       // the hull exactly, then march only the last stretch to the rounded skin.\
+&#x20;       float s = (bw - uShape.y) / h;\
+&#x20;       vec2 hc = vec2(-1e4, 1e4);\
+&#x20;       bvec2 fl = bvec2(false);\
+&#x20;       halfSpace(vec3(1.0, s, 0.0), bw, ro, rd, false, hc, fl);\
+&#x20;       halfSpace(vec3(-1.0, s, 0.0), bw, ro, rd, false, hc, fl);\
+&#x20;       halfSpace(vec3(0.0, s, 1.0), bw, ro, rd, false, hc, fl);\
+&#x20;       halfSpace(vec3(0.0, s, -1.0), bw, ro, rd, false, hc, fl);\
+&#x20;       halfSpace(vec3(0.0, 1.0, 0.0), h, ro, rd, false, hc, fl);\
+&#x20;       halfSpace(vec3(0.0, -1.0, 0.0), 0.0, ro, rd, false, hc, fl);\
+&#x20;       if (hc.x < hc.y && hc.y > 0.0) {\
+&#x20;           t = max(hc.x, 0.0);\
+&#x20;           for (int i = 0; i < 40; i++) {\
+&#x20;               float d = sdCap(ro + rd \* t);\
+&#x20;               minD = min(minD, d);\
+&#x20;               if (d < eps) { hit = true; break; }\
+&#x20;               t += d;\
+&#x20;               if (t > hc.y) break;\
+&#x20;           }\
+&#x20;       }\
+&#x20;       // Rays that miss the hull only need their closest approach, for the glow.\
+&#x20;       if (!hit && uGlow > 0.0 && minD > pxW \* 3.0) {\
+&#x20;           float tg = tN;\
+&#x20;           for (int i = 0; i < 28; i++) {\
+&#x20;               float d = sdCap(ro + rd \* tg);\
+&#x20;               minD = min(minD, d);\
+&#x20;               tg += max(d \* 0.8, pxW \* 0.5);\
+&#x20;               if (tg > tF) break;\
+&#x20;           }\
+&#x20;       }\
+&#x20;       if (hit) {\
+&#x20;           vec3 p = ro + rd \* t;\
+&#x20;           float ne = max(0.0015, pxW \* 0.8);\
+&#x20;           vec3 n = calcN(p, ne);\
+&#x20;           float cosi = clamp(dot(n, -rd), 0.0, 1.0);\
+&#x20;           float ior = uIor.x;\
+\
+&#x20;           // Shared path, traced once at the middle wavelength: glass, the air\
+&#x20;           // cavity, glass again, with total internal reflection wherever the\
+&#x20;           // angle forbids leaving. Those bounces are where real glass gets its\
+&#x20;           // sparkle, and the hollow is what doubles every edge.\
+&#x20;           vec3 d = refract(rd, n, 1.0 / ior);\
+&#x20;           vec3 q = p - n \* 0.002;\
+&#x20;           bool inGlass = true;\
+&#x20;           vec3 evN[EV];\
+&#x20;           int evK[EV];\
+&#x20;           int nev = 0;\
+&#x20;           // 0 trapped, 1 out through the skin, 2 out through the open bottom\
+&#x20;           int fate = 0;\
+&#x20;           float path = 0.0;\
+&#x20;           for (int i = 0; i < EV; i++) {\
+&#x20;               bvec2 fl;\
+&#x20;               if (inGlass) {\
+&#x20;                   float tO = exitT(q, d);\
+&#x20;                   float tC = 1e4;\
+&#x20;                   if (uWall.x > 0.0) {\
+&#x20;                       vec2 c = cavity(q, d, fl);\
+&#x20;                       if (c.x <= c.y && c.x > 0.0 && !fl.x) tC = c.x;\
+&#x20;                   }\
+&#x20;                   float tt = min(tO, tC);\
+&#x20;                   q += d \* tt;\
+&#x20;                   path += tt;\
+&#x20;                   vec3 nn = calcN(q, ne);\
+&#x20;                   evN[i] = nn;\
+&#x20;                   nev = i + 1;\
+&#x20;                   vec3 ex = refract(d, -nn, ior);\
+&#x20;                   if (dot(ex, ex) < 1e-4) {\
+&#x20;                       evK[i] = 0;\
+&#x20;                       d = reflect(d, nn);\
+&#x20;                       q -= nn \* 0.002;\
+&#x20;                       continue;\
+&#x20;                   }\
+&#x20;                   evK[i] = 1;\
+&#x20;                   d = ex;\
+&#x20;                   if (tC < tO) {\
+&#x20;                       inGlass = false;\
+&#x20;                       q += nn \* 0.002;\
+&#x20;                   } else {\
+&#x20;                       fate = 1;\
+&#x20;                       break;\
+&#x20;                   }\
+&#x20;               } else {\
+&#x20;                   vec2 c = cavity(q, d, fl);\
+&#x20;                   if (fl.y) {\
+&#x20;                       fate = 2;\
+&#x20;                       break;\
+&#x20;                   }\
+&#x20;                   q += d \* c.y;\
+&#x20;                   vec3 nn = calcN(q, ne);\
+&#x20;                   evN[i] = nn;\
+&#x20;                   evK[i] = 2;\
+&#x20;                   nev = i + 1;\
+&#x20;                   d = refract(d, nn, 1.0 / ior);\
+&#x20;                   q -= nn \* 0.002;\
+&#x20;                   inGlass = true;\
+&#x20;               }\
+&#x20;           }\
+\
+&#x20;           sig = 1.0 + float(nev) + 10.0 \* float(fate);\
+\
+&#x20;           // Each wavelength replays the same interfaces at its own index.\
+&#x20;           vec3 tr = vec3(0.0);\
+&#x20;           vec3 wsum = vec3(0.0);\
+&#x20;           for (int k = 0; k < NS; k++) {\
+&#x20;               float f = float(k) / float(NS - 1);\
+&#x20;               vec3 w = clamp(abs(fract(f \* 0.72 + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) \* 6.0 - 3.0) - 1.0, 0.0, 1.0);\
+&#x20;               float ik = ior + uIor.y \* (f \* 2.0 - 1.0);\
+&#x20;               vec3 dk = refract(rd, n, 1.0 / ik);\
+&#x20;               for (int i = 0; i < EV; i++) {\
+&#x20;                   if (i >= nev) break;\
+&#x20;                   vec3 nn = evN[i];\
+&#x20;                   if (evK[i] == 0) {\
+&#x20;                       dk = reflect(dk, nn);\
+&#x20;                   } else if (evK[i] == 1) {\
+&#x20;                       vec3 ex = refract(dk, -nn, ik);\
+&#x20;                       dk = dot(ex, ex) < 1e-4 ? reflect(dk, nn) : ex;\
+&#x20;                   } else {\
+&#x20;                       dk = refract(dk, nn, 1.0 / ik);\
+&#x20;                   }\
+&#x20;               }\
+&#x20;               tr += w \* env(toW \* dk) \* (fate == 0 ? 0.3 : 1.0);\
+&#x20;               wsum += w;\
+&#x20;           }\
+&#x20;           tr /= wsum;\
+&#x20;           tr \*= mix(1.0, 0.75, clamp(path / 2.0, 0.0, 1.0));\
+\
+&#x20;           vec3 refl = env(toW \* reflect(rd, n));\
+&#x20;           float F = 0.04 + 0.96 \* pow(1.0 - cosi, 5.0);\
+&#x20;           col = tr \* (1.0 - F) + refl \* F;\
+\
+&#x20;           float g = 1.0 - cosi;\
+&#x20;           col += vec3(pow(g, uRimPow \* 1.08), pow(g, uRimPow), pow(g, uRimPow \* 0.92)) \* uRim;\
+\
+&#x20;           // Bevels: a rounded edge faces a whole arc of the studio at once and\
+&#x20;           // pipes light along the wall, so on a real cap it is the brightest\
+&#x20;           // thing in frame. Picked out by normals lying between two faces.\
+&#x20;           vec2 nh = abs(n.xz);\
+&#x20;           float vert = smoothstep(0.45, 0.8, min(nh.x, nh.y) / max(max(nh.x, nh.y), 1e-3)) \* (1.0 - smoothstep(0.45, 0.7, n.y));\
+&#x20;           float lip = smoothstep(0.32, 0.5, n.y) \* (1.0 - smoothstep(0.86, 0.95, n.y)) \* step(h \* 0.75, p.y);\
+&#x20;           float base = smoothstep(0.1, 0.4, -n.y) \* step(p.y, 0.1);\
+&#x20;           float edge = max(max(vert, lip), base \* 0.5);\
+&#x20;           col += edge \* (vec3(0.85, 0.88, 1.0) \* 0.9 + tr) \* uRim;\
+\
+&#x20;           // Pointer torch: a pool of the key light under the cursor, measured in\
+&#x20;           // screen pixels so it sits exactly there at any zoom or Placement. The\
+&#x20;           // bevels and the grazing gloss catch it hardest, as real glass does.\
+&#x20;           vec2 dp = (frag - uPtr.xy) / uPtr.z;\
+&#x20;           float pool = exp(-dot(dp, dp));\
+&#x20;           col += uKeyCol \* uPtrGain \* pool \* (0.2 + edge \* 1.4 + F \* 2.5 + exp(-dot(dp, dp) \* 12.0) \* 0.35);\
+\
+&#x20;           // The print (legend text or the uploaded mark) covers the top face's\
+&#x20;           // square. Its mip level comes from the CPU, so sampling it inside this\
+&#x20;           // branch never leans on screen-space derivatives.\
+&#x20;           if (n.y > 0.6 && p.y > h \* 0.85) {\
+&#x20;               vec2 tuv = p.xz / uLegendSize + 0.5;\
+&#x20;               if (tuv.x > 0.0 && tuv.x < 1.0 && tuv.y > 0.0 && tuv.y < 1.0) {\
+&#x20;                   float fade = smoothstep(0.6, 0.8, n.y);\
+&#x20;                   vec4 pr = textureLod(uLegend, tuv, uLegLod);\
+&#x20;                   legA = pr.a \* fade;\
+&#x20;                   legC = mix(pr.rgb, uLegendCol, uTint);\
+&#x20;                   // Print sits under a glossy surface: a faint bloom around it.\
+&#x20;                   float halo = textureLod(uLegend, tuv, uLegLod + 3.0).a \* fade;\
+&#x20;                   col += legC \* halo \* 0.18;\
+&#x20;               }\
+&#x20;           }\
+&#x20;           glass = 1.0;\
+&#x20;       } else {\
+&#x20;           // Soft halo sized in key units, so it reads the same at any zoom and never\
+&#x20;           // shows the march's steps; the silhouette itself is smoothed in main.\
+&#x20;           col = vec3(0.85, 0.85, 0.95) \* uGlow \* exp(-max(minD, 0.0) / (0.035 + pxW));\
+&#x20;           glass = 1.0;\
+&#x20;       }\
+&#x20;   }\
+\
+&#x20;   // Filmic roll-off: hot orange burns through yellow to white, as on film.\
+&#x20;   col = 1.0 - exp(-col \* 1.35);\
+&#x20;   // The print sits on the surface, so it is laid on after the roll-off and stays pure.\
+&#x20;   col = mix(col, legC, legA);\
+&#x20;   return uBg + col \* glass \* (1.0 - uBg);\
+}\
+\
+// Rotated-grid offsets for the edge resample; the first is the pixel centre.\
+const vec2 RG[5] = vec2[5]\(vec2(0.0), vec2(0.125, 0.375), vec2(-0.375, 0.125), vec2(0.375, -0.125), vec2(-0.125, -0.375));\
+\
+void main() {\
+&#x20;   vec2 frag = gl_FragCoord.xy;\
+&#x20;   // Edge-adaptive anti-aliasing: where a 2x2 quad straddles the silhouette, a\
+&#x20;   // bevel, a change of light path or a hard colour step, four more rays on a\
+&#x20;   // rotated grid average the pixel. Flat glass and the stage pay for one.\
+&#x20;   // One call site, so the big body is compiled once.\
+&#x20;   vec3 outC = vec3(0.0);\
+&#x20;   float n = 0.0;\
+&#x20;   bool edge = false;\
+&#x20;   for (int i = 0; i < 5; i++) {\
+&#x20;       float sg;\
+&#x20;       vec3 c = sampleAt(frag + RG[i], sg);\
+&#x20;       if (i == 0) {\
+&#x20;           vec3 fc = fwidth(c);\
+&#x20;           edge = fwidth(sg) > 0.5 || max(fc.r, max(fc.g, fc.b)) > 0.12;\
+&#x20;       }\
+&#x20;       outC += c;\
+&#x20;       n += 1.0;\
+&#x20;       if (!edge) break;\
+&#x20;   }\
+&#x20;   outC /= n;\
+\
+&#x20;   vec2 nd = (frag - 0.5 \* uRes) / (0.5 \* uRes);\
+&#x20;   outC \*= 1.0 - uVig \* smoothstep(0.2, 1.4, length(nd));\
+&#x20;   // Grain per device pixel, so it reads as fine film rather than blocks;\
+&#x20;   // strongest in the mid-tones, faint on the black stage.\
+&#x20;   uvec2 cell = uvec2(frag);\
+&#x20;   float r = float(hashU(uvec3(cell, uint(uSeed))) >> 8) / 16777216.0;\
+&#x20;   float lum = dot(outC, vec3(0.299, 0.587, 0.114));\
+&#x20;   outC += (r - 0.5) \* uGrain \* (0.25 + 0.75 \* smoothstep(0.0, 0.35, lum) \* (1.0 - 0.6 \* lum));\
+&#x20;   outColor = vec4(clamp(outC, 0.0, 1.0), 1.0);\
+}\`\
+\
+const D2R = Math.PI / 180\
+\
+function num(v: unknown, fb: number): number {\
+&#x20;   return typeof v === "number" && isFinite(v) ? v : fb\
+}\
+\
+function clampN(v: number, lo: number, hi: number) {\
+&#x20;   return Math.min(hi, Math.max(lo, v))\
+}\
+\
+const colorCache = new Map\<string, number[]>()\
+function toRgb(c: unknown, fb: number[]): number[] {\
+&#x20;   if (typeof c !== "string") return fb\
+&#x20;   const hit = colorCache.get(c)\
+&#x20;   if (hit) return hit\
+&#x20;   let out: number[] | null = null\
+&#x20;   const rgb = c.match(/rgba?\\(([^)]+)\\)/i)\
+&#x20;   if (rgb) {\
+&#x20;       const parts = rgb[1].split(/[\s,/]+/).filter(Boolean).map(parseFloat)\
+&#x20;       if (parts.length >= 3) out = [parts[0] / 255, parts[1] / 255, parts[2] / 255]\
+&#x20;   } else {\
+&#x20;       const hex = c.match(/#([0-9a-f]{3,8})/i)\
+&#x20;       if (hex) {\
+&#x20;           let h = hex[1]\
+&#x20;           if (h.length === 3 || h.length === 4) h = h.split("").map((x) => x + x).join("")\
+&#x20;           out = [parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255]\
+&#x20;       }\
+&#x20;   }\
+&#x20;   const res = out && out.every((x) => isFinite(x)) ? out : fb\
+&#x20;   if (colorCache.size > 200) colorCache.clear()\
+&#x20;   colorCache.set(c, res)\
+&#x20;   return res\
+}\
+\
+function bezier(x1: number, y1: number, x2: number, y2: number, x: number) {\
+&#x20;   let lo = 0\
+&#x20;   let hi = 1\
+&#x20;   let t = x\
+&#x20;   for (let i = 0; i < 20; i++) {\
+&#x20;       const bx = 3 \* (1 - t) \* (1 - t) \* t \* x1 + 3 \* (1 - t) \* t \* t \* x2 + t \* t \* t\
+&#x20;       if (bx < x) lo = t\
+&#x20;       else hi = t\
+&#x20;       t = (lo + hi) / 2\
+&#x20;   }\
+&#x20;   return 3 \* (1 - t) \* (1 - t) \* t \* y1 + 3 \* (1 - t) \* t \* t \* y2 + t \* t \* t\
+}\
+\
+function fontPxOf(font: LegendFont | undefined): number {\
+&#x20;   const v = font?.fontSize\
+&#x20;   const n = typeof v === "number" ? v : parseFloat(String(v))\
+&#x20;   return isFinite(n) && n > 0 ? n : 15\
+}\
+\
+/\*\* Side of the print texture, which covers the whole top face. \*/\
+const PRINT_TEX = 1024\
+/\*\* Share of the top face an uploaded mark spans at Print Size 100%. \*/\
+const MARK_SHARE = 0.42\
+/\*\* Device-pixel budget for the canvas; a 4K frame steps down instead of heating the GPU. \*/\
+const PIXEL_BUDGET = 2_400_000\
+/\*\* How far the softboxes sway either side of their rest azimuth (radians). \*/\
+const LIGHT_SWAY = 22 \* D2R\
+/\*\* Rounding of the top lip, in key units (base half-width = 1). \*/\
+const TOP_ROUND = 0.07\
+\
+// Draws the print in top-face space: the canvas is the face's square, its\
+// centre the face's centre. textPx is the legend's font size in canvas pixels.\
+function drawPrint(\
+&#x20;   ctx: CanvasRenderingContext2D,\
+&#x20;   text: string,\
+&#x20;   font: LegendFont | undefined,\
+&#x20;   img: HTMLImageElement | null,\
+&#x20;   pr: Print,\
+&#x20;   textPx: number\
+) {\
+&#x20;   const N = PRINT_TEX\
+&#x20;   ctx.setTransform(1, 0, 0, 1, 0, 0)\
+&#x20;   ctx.clearRect(0, 0, N, N)\
+&#x20;   ctx.translate(N / 2 + (num(pr.x, 0) / 100) \* N, N / 2 + (num(pr.y, 0) / 100) \* N)\
+&#x20;   ctx.rotate(num(pr.angle, 0) \* D2R)\
+&#x20;   const k = Math.max(0.05, num(pr.size, 100) / 100)\
+&#x20;   if (img) {\
+&#x20;       // Contain-fit on the mark's own proportions; an SVG with no intrinsic size is treated as square.\
+&#x20;       const iw = img.naturalWidth || 1\
+&#x20;       const ih = img.naturalWidth ? img.naturalHeight || 1 : 1\
+&#x20;       const f = (N \* MARK_SHARE \* k) / Math.max(iw, ih)\
+&#x20;       ctx.drawImage(img, (-iw \* f) / 2, (-ih \* f) / 2, iw \* f, ih \* f)\
+&#x20;       if (pr.tint) {\
+&#x20;           // Keep the mark's shape, take Legend Color from the shader.\
+&#x20;           ctx.globalCompositeOperation = "source-in"\
+&#x20;           ctx.fillStyle = "#ffffff"\
+&#x20;           ctx.fillRect(-N, -N, 2 \* N, 2 \* N)\
+&#x20;           ctx.globalCompositeOperation = "source-over"\
+&#x20;       }\
+&#x20;       return\
+&#x20;   }\
+&#x20;   if (!text) return\
+&#x20;   const family = font?.fontFamily || \`"Inter", "Helvetica Neue", Helvetica, Arial, sans-serif\`\
+&#x20;   const weight = font?.fontWeight ?? 600\
+&#x20;   const style = font?.fontStyle || "normal"\
+&#x20;   let px = Math.max(4, textPx \* k)\
+&#x20;   const set = () => {\
+&#x20;       ctx.font = \`${style} ${weight} ${px}px ${family}\`\
+&#x20;   }\
+&#x20;   set()\
+&#x20;   try {\
+&#x20;       ;(ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing =\
+&#x20;           typeof font?.letterSpacing === "string" ? font.letterSpacing : "0px"\
+&#x20;   } catch {\
+&#x20;       // older engines have no letterSpacing; tracking stays default\
+&#x20;   }\
+&#x20;   const w = ctx.measureText(text).width\
+&#x20;   if (w > N \* 0.94) {\
+&#x20;       px = Math.max(4, (px \* N \* 0.94) / w)\
+&#x20;       set()\
+&#x20;   }\
+&#x20;   ctx.fillStyle = "#ffffff"\
+&#x20;   ctx.textAlign = "center"\
+&#x20;   ctx.textBaseline = "middle"\
+&#x20;   ctx.fillText(text, 0, px \* 0.04)\
+}\
+\
+const NAMES = [\
+&#x20;   "uCentre", "uPx", "uRoll", "uInv", "uOff", "uTarget", "uElev", "uShape", "uDish", "uIor",\
+&#x20;   "uWall", "uEnvRot", "uC0", "uC1", "uC2", "uC3", "uAz", "uKeyCol", "uKeyDir", "uPtr", "uPtrGain", "uPL",\
+&#x20;   "uLight", "uRim", "uRimPow", "uGlow", "uLegend", "uLegendCol", "uLegendSize", "uLegLod", "uTint", "uBg", "uGrain",\
+&#x20;   "uSeed", "uVig", "uRes",\
+] as const\
+type UName = (typeof NAMES)[number]\
+\
+/\*\*\
+&#x20;\* @framerSupportedLayoutWidth any\
+&#x20;\* @framerSupportedLayoutHeight any\
+&#x20;\* @framerIntrinsicWidth 1200\
+&#x20;\* @framerIntrinsicHeight 800\
+&#x20;\*/\
+function \_\_OriginkitBase_BerylCap(props: BerylCapProps) {\
+&#x20;   props = withMovedControls(props)\
+&#x20;   const {\
+&#x20;   legend = "ctrl",\
+&#x20;   mark,\
+&#x20;   background = "#000000",\
+&#x20;   font = {"variant":"Semibold","fontSize":"25px","textAlign":"left","fontFamily":"Inter","fontWeight":400,"lineHeight":"1em","letterSpacing":"0em"},\
+&#x20;   legendColor = "#FFFFFF",\
+&#x20;   print,\
+&#x20;   size = 443,\
+&#x20;   dispersion = 50,\
+&#x20;   placement,\
+&#x20;   speed = 50,\
+&#x20;   advanced,\
+&#x20;   style,\
+} = props\
+&#x20;   const rootRef = useRef\<HTMLDivElement>(null)\
+&#x20;   const canvasRef = useRef\<HTMLCanvasElement>(null)\
+&#x20;   // Merged here, at render, so the loop never allocates them.\
+&#x20;   const adv: Advanced = { ...DEFAULT_ADVANCED, ...(advanced ?? {}) }\
+&#x20;   const pl: Placement = { ...DEFAULT_PLACEMENT, ...(placement ?? {}) }\
+&#x20;   const pr: Print = { ...DEFAULT_PRINT, ...(print ?? {}) }\
+&#x20;   const live = { legend, font, legendColor, size, dispersion, speed, background, adv, pl, pr }\
+&#x20;   const liveRef = useRef(live)\
+&#x20;   liveRef.current = live\
+&#x20;   const legendDirty = useRef(true)\
+&#x20;   const wakeRef = useRef<() => void>(() => {})\
+&#x20;   // Bumped when the GPU drops the context, so the effect rebuilds everything.\
+&#x20;   const [generation, setGeneration] = useState(0)\
+\
+&#x20;   // Every prop change redraws, even when the loop has settled.\
+&#x20;   useEffect(() => wakeRef.current())\
+\
+&#x20;   // The uploaded mark, decoded once per URL; the loop prints it once it has loaded.\
+&#x20;   const markSrc = srcOf(mark)\
+&#x20;   const markRef = useRef<{ src: string; img: HTMLImageElement | null; ok: boolean }>({ src: "", img: null, ok: false })\
+&#x20;   useEffect(() => {\
+&#x20;       if (!markSrc) {\
+&#x20;           markRef.current = { src: "", img: null, ok: false }\
+&#x20;           legendDirty.current = true\
+&#x20;           wakeRef.current()\
+&#x20;           return\
+&#x20;       }\
+&#x20;       const img = new window\.Image()\
+&#x20;       img.crossOrigin = "anonymous"\
+&#x20;       const entry = { src: markSrc, img, ok: false }\
+&#x20;       markRef.current = entry\
+&#x20;       img.onload = () => {\
+&#x20;           if (markRef.current !== entry) return\
+&#x20;           entry.ok = true\
+&#x20;           legendDirty.current = true\
+&#x20;           wakeRef.current()\
+&#x20;       }\
+&#x20;       img.onerror = () => console.warn("BerylCap: could not load mark", markSrc)\
+&#x20;       img.src = markSrc\
+&#x20;   }, [markSrc])\
+\
+&#x20;   const fontKey = \`${font?.fontFamily}|${font?.fontWeight}|${font?.fontStyle}|${font?.letterSpacing}\`\
+&#x20;   useEffect(() => {\
+&#x20;       legendDirty.current = true\
+&#x20;       wakeRef.current()\
+&#x20;   }, [pr.x, pr.y, pr.size, pr.angle, pr.tint])\
+&#x20;   useEffect(() => {\
+&#x20;       legendDirty.current = true\
+&#x20;       wakeRef.current()\
+&#x20;       const fam = font?.fontFamily\
+&#x20;       if (fam && document.fonts?.load) {\
+&#x20;           const spec = \`${font?.fontStyle || "normal"} ${font?.fontWeight ?? 600} 64px ${fam}\`\
+&#x20;           document.fonts\
+&#x20;               .load(spec, legend || "esc.")\
+&#x20;               .then(() => {\
+&#x20;                   legendDirty.current = true\
+&#x20;                   wakeRef.current()\
+&#x20;               })\
+&#x20;               .catch(() => {})\
+&#x20;       }\
+&#x20;   }, [legend, fontKey])\
+\
+&#x20;   useEffect(() => {\
+&#x20;       const rootEl = rootRef.current\
+&#x20;       const canvasEl = canvasRef.current\
+&#x20;       if (!rootEl || !canvasEl) return\
+&#x20;       const ctx = canvasEl.getContext("webgl2", {\
+&#x20;           antialias: false,\
+&#x20;           alpha: false,\
+&#x20;           premultipliedAlpha: false,\
+&#x20;           powerPreference: "low-power",\
+&#x20;           preserveDrawingBuffer: false,\
+&#x20;       })\
+&#x20;       if (!ctx) return\
+&#x20;       const root: HTMLDivElement = rootEl\
+&#x20;       const canvas: HTMLCanvasElement = canvasEl\
+&#x20;       const gl: WebGL2RenderingContext = ctx\
+\
+&#x20;       let disposed = false\
+&#x20;       let raf = 0\
+&#x20;       let program: WebGLProgram | null = null\
+&#x20;       let tex: WebGLTexture | null = null\
+&#x20;       let vao: WebGLVertexArrayObject | null = null\
+&#x20;       const slots = {} as Record\<UName, { loc: WebGLUniformLocation | null; v: Float64Array }>\
+\
+&#x20;       const legCanvas = document.createElement("canvas")\
+&#x20;       legCanvas.width = PRINT_TEX\
+&#x20;       legCanvas.height = PRINT_TEX\
+&#x20;       const legCtx = legCanvas.getContext("2d")\
+\
+&#x20;       try {\
+&#x20;           const compile = (type: number, src: string) => {\
+&#x20;               const s = gl.createShader(type)!\
+&#x20;               gl.shaderSource(s, src)\
+&#x20;               gl.compileShader(s)\
+&#x20;               if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {\
+&#x20;                   const log = gl.getShaderInfoLog(s)\
+&#x20;                   gl.deleteShader(s)\
+&#x20;                   throw new Error("shader: " + log)\
+&#x20;               }\
+&#x20;               return s\
+&#x20;           }\
+&#x20;           const vs = compile(gl.VERTEX_SHADER, VERT)\
+&#x20;           const fs = compile(gl.FRAGMENT_SHADER, FRAG)\
+&#x20;           program = gl.createProgram()!\
+&#x20;           gl.attachShader(program, vs)\
+&#x20;           gl.attachShader(program, fs)\
+&#x20;           gl.linkProgram(program)\
+&#x20;           gl.deleteShader(vs)\
+&#x20;           gl.deleteShader(fs)\
+&#x20;           if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error("link: " + gl.getProgramInfoLog(program))\
+&#x20;           gl.useProgram(program)\
+&#x20;           for (const n of NAMES) slots[n] = { loc: gl.getUniformLocation(program, n), v: new Float64Array(4).fill(NaN) }\
+&#x20;           vao = gl.createVertexArray()\
+&#x20;           gl.bindVertexArray(vao)\
+&#x20;           tex = gl.createTexture()\
+&#x20;           gl.activeTexture(gl.TEXTURE0)\
+&#x20;           gl.bindTexture(gl.TEXTURE_2D, tex)\
+&#x20;           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)\
+&#x20;           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)\
+&#x20;           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)\
+&#x20;           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)\
+&#x20;           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]))\
+&#x20;           gl.uniform1i(slots.uLegend.loc, 0)\
+&#x20;       } catch (err) {\
+&#x20;           // Background stays showing; the component just has no glass.\
+&#x20;           console.error("BerylCap:", err)\
+&#x20;           return\
+&#x20;       }\
+\
+&#x20;       // Uniforms upload only when their value changed.\
+&#x20;       const f1 = (n: UName, a: number) => {\
+&#x20;           const s = slots[n]\
+&#x20;           if (s.v[0] !== a) {\
+&#x20;               s.v[0] = a\
+&#x20;               gl.uniform1f(s.loc, a)\
+&#x20;           }\
+&#x20;       }\
+&#x20;       const f2 = (n: UName, a: number, b: number) => {\
+&#x20;           const s = slots[n]\
+&#x20;           if (s.v[0] !== a || s.v[1] !== b) {\
+&#x20;               s.v[0] = a\
+&#x20;               s.v[1] = b\
+&#x20;               gl.uniform2f(s.loc, a, b)\
+&#x20;           }\
+&#x20;       }\
+&#x20;       const f3 = (n: UName, a: number, b: number, c: number) => {\
+&#x20;           const s = slots[n]\
+&#x20;           if (s.v[0] !== a || s.v[1] !== b || s.v[2] !== c) {\
+&#x20;               s.v[0] = a\
+&#x20;               s.v[1] = b\
+&#x20;               s.v[2] = c\
+&#x20;               gl.uniform3f(s.loc, a, b, c)\
+&#x20;           }\
+&#x20;       }\
+&#x20;       const f4 = (n: UName, a: number, b: number, c: number, d: number) => {\
+&#x20;           const s = slots[n]\
+&#x20;           if (s.v[0] !== a || s.v[1] !== b || s.v[2] !== c || s.v[3] !== d) {\
+&#x20;               s.v[0] = a\
+&#x20;               s.v[1] = b\
+&#x20;               s.v[2] = c\
+&#x20;               s.v[3] = d\
+&#x20;               gl.uniform4f(s.loc, a, b, c, d)\
+&#x20;           }\
+&#x20;       }\
+&#x20;       const c3 = (n: UName, v: unknown, fb: number[]) => {\
+&#x20;           const c = toRgb(v, fb)\
+&#x20;           f3(n, c[0], c[1], c[2])\
+&#x20;       }\
+\
+&#x20;       // Layout size from ResizeObserver only; never read per frame.\
+&#x20;       let cssW = Math.max(1, root.offsetWidth)\
+&#x20;       let cssH = Math.max(1, root.offsetHeight)\
+&#x20;       let dpr = 1\
+&#x20;       let quality = 1\
+&#x20;       let scale = 1\
+&#x20;       const applySize = () => {\
+&#x20;           dpr = Math.min(window\.devicePixelRatio || 1, 2)\
+&#x20;           const budget = Math.min(1, Math.sqrt(PIXEL_BUDGET / Math.max(1, cssW \* cssH \* dpr \* dpr)))\
+&#x20;           scale = dpr \* budget \* quality\
+&#x20;           const w = Math.max(1, Math.round(cssW \* scale))\
+&#x20;           const h = Math.max(1, Math.round(cssH \* scale))\
+&#x20;           if (canvas.width !== w) canvas.width = w\
+&#x20;           if (canvas.height !== h) canvas.height = h\
+&#x20;       }\
+&#x20;       applySize()\
+&#x20;       const ro = new ResizeObserver((entries) => {\
+&#x20;           const r = entries[0].contentRect\
+&#x20;           cssW = Math.max(1, r.width)\
+&#x20;           cssH = Math.max(1, r.height)\
+&#x20;           applySize()\
+&#x20;           wake()\
+&#x20;       })\
+&#x20;       ro.observe(root)\
+\
+&#x20;       // Pointer: handlers only record; the rect is read once per frame, and only after a move or scroll.\
+&#x20;       const ptr = { cx: 0, cy: 0, x: 0, y: 0, over: false, down: false, moved: false }\
+&#x20;       const onMove = (e: PointerEvent) => {\
+&#x20;           ptr.cx = e.clientX\
+&#x20;           ptr.cy = e.clientY\
+&#x20;           ptr.over = true\
+&#x20;           ptr.moved = true\
+&#x20;           wake()\
+&#x20;       }\
+&#x20;       const onLeave = () => {\
+&#x20;           ptr.over = false\
+&#x20;           ptr.down = false\
+&#x20;           wake()\
+&#x20;       }\
+&#x20;       const onDown = (e: PointerEvent) => {\
+&#x20;           ptr.down = true\
+&#x20;           onMove(e)\
+&#x20;       }\
+&#x20;       const onUp = (e: PointerEvent) => {\
+&#x20;           ptr.down = false\
+&#x20;           if (e.pointerType !== "mouse") ptr.over = false\
+&#x20;           wake()\
+&#x20;       }\
+&#x20;       const onScroll = () => {\
+&#x20;           if (ptr.over) ptr.moved = true\
+&#x20;       }\
+&#x20;       root.addEventListener("pointerenter", onMove)\
+&#x20;       root.addEventListener("pointermove", onMove)\
+&#x20;       root.addEventListener("pointerleave", onLeave)\
+&#x20;       root.addEventListener("pointerdown", onDown)\
+&#x20;       window\.addEventListener("pointerup", onUp)\
+&#x20;       window\.addEventListener("pointercancel", onLeave)\
+&#x20;       window\.addEventListener("scroll", onScroll, { passive: true, capture: true })\
+\
+&#x20;       const mq = window\.matchMedia ? window\.matchMedia("(prefers-reduced-motion: reduce)") : null\
+&#x20;       let reduced = !!mq?.matches\
+&#x20;       const onMq = () => {\
+&#x20;           reduced = !!mq?.matches\
+&#x20;           wake()\
+&#x20;       }\
+&#x20;       mq?.addEventListener?.("change", onMq)\
+\
+&#x20;       // Off-screen instances and hidden tabs stop drawing entirely.\
+&#x20;       let visible = true\
+&#x20;       const io = new IntersectionObserver((es) => {\
+&#x20;           visible = es[es.length - 1].isIntersecting\
+&#x20;           wake()\
+&#x20;       })\
+&#x20;       io.observe(root)\
+&#x20;       const onVis = () => wake()\
+&#x20;       document.addEventListener("visibilitychange", onVis)\
+\
+&#x20;       const onLost = (e: Event) => {\
+&#x20;           e.preventDefault()\
+&#x20;           disposed = true\
+&#x20;           cancelAnimationFrame(raf)\
+&#x20;       }\
+&#x20;       const onRestored = () => setGeneration((g) => g + 1)\
+&#x20;       canvas.addEventListener("webglcontextlost", onLost)\
+&#x20;       canvas.addEventListener("webglcontextrestored", onRestored)\
+\
+&#x20;       const inv = new Float32Array(9)\
+&#x20;       // Pointer motion: the lean is a damped spring (secondary motion); the\
+&#x20;       // glint under the cursor follows in \~70 ms.\
+&#x20;       const st = { t: 0, press: 0, pv: 0, over: 0, rest: 0, lx: 0, ly: 0, lvx: 0, lvy: 0, gx: 0, gy: 0 }\
+&#x20;       let lastDraw = -1\
+&#x20;       let due = 0\
+&#x20;       let frameEma = 16.7\
+&#x20;       let drawn = 0\
+&#x20;       let slowFrames = 0\
+&#x20;       let fastFrames = 0\
+&#x20;       let scheduled = false\
+&#x20;       let frameNo = 0\
+&#x20;       // What the print texture was last drawn for, so a resize redraws it at the right size.\
+&#x20;       let printTextPx = -1\
+&#x20;       let printImg: HTMLImageElement | null = null\
+\
+&#x20;       function wake() {\
+&#x20;           if (disposed || scheduled) return\
+&#x20;           scheduled = true\
+&#x20;           raf = requestAnimationFrame(loop)\
+&#x20;       }\
+&#x20;       wakeRef.current = wake\
+\
+&#x20;       function loop(now: number) {\
+&#x20;           scheduled = false\
+&#x20;           if (disposed || !visible || document.hidden) {\
+&#x20;               lastDraw = -1\
+&#x20;               return\
+&#x20;           }\
+&#x20;           // Paced to an average 60 fps on any refresh rate: a 120 or 144 Hz\
+&#x20;           // screen does no extra work, and alternates 2- and 3-tick frames\
+&#x20;           // rather than settling on 48.\
+&#x20;           if (lastDraw >= 0 && now < due - 3) {\
+&#x20;               wake()\
+&#x20;               return\
+&#x20;           }\
+&#x20;           due = lastDraw < 0 || now - due > 50 ? now + 1000 / 60 : due + 1000 / 60\
+&#x20;           const dt = lastDraw < 0 ? 0 : Math.min((now - lastDraw) / 1000, 1 / 20)\
+&#x20;           // The first frames carry shader compile and warm-up; they say nothing about the device.\
+&#x20;           if (lastDraw >= 0 && ++drawn > 30) {\
+&#x20;               frameEma += (now - lastDraw - frameEma) \* 0.1\
+&#x20;               // Step resolution down when frames run long; back up when there is room again.\
+&#x20;               if (frameEma > 24) slowFrames++\
+&#x20;               else slowFrames = 0\
+&#x20;               if (frameEma < 18) fastFrames++\
+&#x20;               else fastFrames = 0\
+&#x20;               if (slowFrames > 20 && quality > 0.6) {\
+&#x20;                   quality = Math.max(0.6, quality \* 0.88)\
+&#x20;                   slowFrames = 0\
+&#x20;                   applySize()\
+&#x20;               } else if (fastFrames > 180 && quality < 1) {\
+&#x20;                   quality = Math.min(1, quality \* 1.08)\
+&#x20;                   fastFrames = 0\
+&#x20;                   applySize()\
+&#x20;               }\
+&#x20;           }\
+&#x20;           lastDraw = now\
+&#x20;           if (gl.isContextLost()) return\
+\
+&#x20;           const L = liveRef.current\
+&#x20;           const A = L.adv\
+&#x20;           const P = L.pl\
+\
+&#x20;           if (ptr.moved) {\
+&#x20;               ptr.moved = false\
+&#x20;               const r = root.getBoundingClientRect()\
+&#x20;               ptr.x = clampN(((ptr.cx - r.left) / Math.max(1, r.width)) \* 2 - 1, -1, 1)\
+&#x20;               ptr.y = clampN(1 - ((ptr.cy - r.top) / Math.max(1, r.height)) \* 2, -1, 1)\
+&#x20;           }\
+\
+&#x20;           const rate = reduced ? 0 : Math.max(0, num(L.speed, 50)) / 50\
+&#x20;           const sdt = dt \* rate\
+&#x20;           if (reduced) st.t = 0\
+&#x20;           else st.t += sdt\
+\
+&#x20;           const hv = Math.max(0, num(A.hover, 50)) / 50\
+&#x20;           const on = ptr.over && hv > 0\
+\
+&#x20;           // Key geometry first: the pointer is read against the key itself, not\
+&#x20;           // the frame, so moving across the glass is what moves it.\
+&#x20;           const e = clampN(num(A.elevation, 47), 5, 85) \* D2R\
+&#x20;           const ce = Math.cos(e)\
+&#x20;           const se = Math.sin(e)\
+&#x20;           const bw = 1\
+&#x20;           const tw = clampN(num(A.topRatio, 67), 30, 100) / 100\
+&#x20;           const hh = (2 \* clampN(num(A.capHeight, 61), 10, 150)) / 100\
+&#x20;           const hU = hh \* ce + (tw + bw) \* Math.SQRT2 \* se\
+&#x20;           const wU = 2 \* bw \* Math.SQRT2\
+&#x20;           const ty0 = (hh \* ce + (tw - bw) \* Math.SQRT2 \* se) / (2 \* ce)\
+&#x20;           // Capped so the whole key always fits the frame, phone frames included.\
+&#x20;           const sizePx = Math.max(20, Math.min(num(L.size, 230), cssH \* 0.9, (cssW \* 0.9 \* hU) / wU))\
+&#x20;           const pxU = (sizePx \* scale) / hU\
+\
+&#x20;           // Pointer in key radii from the key's centre (x right, y up).\
+&#x20;           const keyR = Math.max(10, sizePx \* 0.5)\
+&#x20;           const kx = ((ptr.x \* 0.5 + 0.5) \* cssW - cssW \* (0.5 + num(P.x, 0) / 100)) / keyR\
+&#x20;           const ky = ((ptr.y \* 0.5 + 0.5) \* cssH - cssH \* (0.5 - num(P.y, 0) / 100)) / keyR\
+&#x20;           const dist = Math.hypot(kx, ky)\
+&#x20;           // Near: 1 over the key, fading out over about three key radii around it.\
+&#x20;           const near = on ? Math.exp(-Math.pow(Math.max(0, dist - 1) / 1.6, 2)) : 0\
+&#x20;           // Rest: the pointer is on the key itself, as a fingertip would be.\
+&#x20;           const restOn = on && dist < 1.05 ? 1 : 0\
+&#x20;           const tx = on ? clampN(kx / 1.3, -1, 1) \* near : 0\
+&#x20;           const ty = on ? clampN(ky / 1.3, -1, 1) \* near : 0\
+&#x20;           const ks = 1 - Math.exp(-dt \* 6)\
+&#x20;           st.over += (near - st.over) \* ks\
+&#x20;           st.rest += (restOn - st.rest) \* (1 - Math.exp(-dt \* 9))\
+&#x20;           const w0 = 7\
+&#x20;           st.lvx += (w0 \* w0 \* (tx - st.lx) - 2 \* w0 \* st.lvx) \* dt\
+&#x20;           st.lvy += (w0 \* w0 \* (ty - st.ly) - 2 \* w0 \* st.lvy) \* dt\
+&#x20;           st.lx += st.lvx \* dt\
+&#x20;           st.ly += st.lvy \* dt\
+&#x20;           // The glint stays on the cursor wherever it is in the frame.\
+&#x20;           const gx0 = on ? ptr.x : 0\
+&#x20;           const gy0 = on ? ptr.y : 0\
+&#x20;           const kf = 1 - Math.exp(-dt \* 14)\
+&#x20;           st.gx += (gx0 - st.gx) \* kf\
+&#x20;           st.gy += (gy0 - st.gy) \* kf\
+\
+&#x20;           // Key press: eased stroke down, hold, damped spring back (the original's timeline).\
+&#x20;           const interval = Math.max(2, num(A.pressInterval, 6))\
+&#x20;           const ph = st.t % interval\
+&#x20;           let drive = -1\
+&#x20;           if (!reduced && rate > 0 && ph < 0.2) drive = ph < 0.12 ? bezier(0.55, 0, 1, 0.45, ph / 0.12) : 1\
+&#x20;           // Resting on the key sinks it part way, as a fingertip does; a click takes it to the floor.\
+&#x20;           const target = reduced || hv <= 0 ? 0 : ptr.down ? 1 : st.rest \* 0.32 \* Math.min(hv, 1.5)\
+&#x20;           if (reduced) {\
+&#x20;               st.press = 0\
+&#x20;               st.pv = 0\
+&#x20;           } else if (drive >= 0 && drive >= st.press) {\
+&#x20;               st.press = drive\
+&#x20;               st.pv = 0\
+&#x20;           } else {\
+&#x20;               const k0 = 14\
+&#x20;               const z = clampN(num(A.pressDamping, 52), 5, 200) / 100\
+&#x20;               // A held press springs in real time even when Speed is 0.\
+&#x20;               const springDt = target > 0 || rate === 0 ? dt : sdt\
+&#x20;               const n = 4\
+&#x20;               const hs = springDt / n\
+&#x20;               for (let i = 0; i < n; i++) {\
+&#x20;                   const a = -k0 \* k0 \* (st.press - target) - 2 \* z \* k0 \* st.pv\
+&#x20;                   st.pv += a \* hs\
+&#x20;                   st.press += st.pv \* hs\
+&#x20;               }\
+&#x20;           }\
+\
+&#x20;           const settled =\
+&#x20;               rate === 0 &&\
+&#x20;               Math.abs(tx - st.lx) + Math.abs(ty - st.ly) + Math.abs(st.lvx) + Math.abs(st.lvy) < 1e-4 &&\
+&#x20;               Math.abs(gx0 - st.gx) + Math.abs(gy0 - st.gy) < 1e-4 &&\
+&#x20;               Math.abs(near - st.over) + Math.abs(restOn - st.rest) < 1e-3 &&\
+&#x20;               Math.abs(st.press - target) + Math.abs(st.pv) < 1e-4\
+\
+&#x20;           const Pd = Math.max(0.5, num(A.driftPeriod, 8000) / 1000)\
+&#x20;           const T = st.t\
+&#x20;           const lean = st.over \* hv\
+&#x20;           // While the pointer is over the key, the idle drift calms so the pointer is in charge of the pose.\
+&#x20;           const calm = 1 - 0.65 \* clampN(st.over \* Math.min(hv, 1), 0, 1)\
+&#x20;           const yaw =\
+&#x20;               num(A.turn, 41) + num(A.tiltRange, 12) \* calm \* Math.sin((2 \* Math.PI \* T) / Pd) + lean \* 30 \* st.lx\
+&#x20;           // Placement Tilt tips the top away (negative nod), on top of drift, lean and press.\
+&#x20;           const nod =\
+&#x20;               num(A.nodRange, 5) \* calm \* Math.sin((2 \* Math.PI \* T) / (Pd \* 0.75)) -\
+&#x20;               lean \* 18 \* st.ly +\
+&#x20;               num(A.pressTilt, 2) \* st.press -\
+&#x20;               clampN(num(P.tilt, 0), -60, 60)\
+\
+&#x20;           const bob = hU \* (num(A.bobAmount, 5) / 100) \* Math.sin((2 \* Math.PI \* T) / (Pd \* 0.5)) \* calm\
+&#x20;           // Approaching, the key rises to meet the pointer and drifts toward it;\
+&#x20;           // once the pointer rests on it, the lift gives way to the half-press.\
+&#x20;           const lift = hU \* 0.05 \* Math.max(0, st.over - st.rest) \* hv\
+&#x20;           const pull = 0.1 \* bw \* st.lx \* lean\
+&#x20;           const drop = hU \* (num(A.pressDepth, 10) / 100) \* st.press\
+\
+&#x20;           const cy = Math.cos(yaw \* D2R)\
+&#x20;           const sy = Math.sin(yaw \* D2R)\
+&#x20;           const cx = Math.cos(nod \* D2R)\
+&#x20;           const sx = Math.sin(nod \* D2R)\
+&#x20;           // rows of M = Rx(nod)·Ry(yaw); uploaded as columns of M⁻¹ = Mᵀ\
+&#x20;           inv[0] = cy\
+&#x20;           inv[1] = 0\
+&#x20;           inv[2] = sy\
+&#x20;           inv[3] = sx \* sy\
+&#x20;           inv[4] = cx\
+&#x20;           inv[5] = -sx \* cy\
+&#x20;           inv[6] = -cx \* sy\
+&#x20;           inv[7] = sx\
+&#x20;           inv[8] = cx \* cy\
+\
+&#x20;           // The print texture spans the top face's square; the legend keeps its\
+&#x20;           // font size in screen pixels, as in the original.\
+&#x20;           const face = 2 \* tw\
+&#x20;           const textPx = Math.round((((fontPxOf(L.font) / sizePx) \* hU) / face) \* PRINT_TEX \* 4) / 4\
+&#x20;           const mk = markRef.current\
+&#x20;           const img = mk.ok ? mk.img : null\
+&#x20;           if (legCtx && (legendDirty.current || textPx !== printTextPx || img !== printImg)) {\
+&#x20;               legendDirty.current = false\
+&#x20;               printTextPx = textPx\
+&#x20;               printImg = img\
+&#x20;               drawPrint(legCtx, String(L.legend ?? ""), L.font, img, L.pr, textPx)\
+&#x20;               gl.activeTexture(gl.TEXTURE0)\
+&#x20;               gl.bindTexture(gl.TEXTURE_2D, tex)\
+&#x20;               gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)\
+&#x20;               gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)\
+&#x20;               try {\
+&#x20;                   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, legCanvas)\
+&#x20;               } catch {\
+&#x20;                   // A mark served without CORS taints the canvas: fall back to the text.\
+&#x20;                   console.warn("BerylCap: the mark's server does not allow it to be drawn; showing the legend instead")\
+&#x20;                   mk.ok = false\
+&#x20;                   printImg = null\
+&#x20;                   drawPrint(legCtx, String(L.legend ?? ""), L.font, null, L.pr, textPx)\
+&#x20;                   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, legCanvas)\
+&#x20;               }\
+&#x20;               gl.generateMipmap(gl.TEXTURE_2D)\
+&#x20;           }\
+\
+&#x20;           const ior = clampN(num(A.ior, 155), 100, 250) / 100\
+&#x20;           // Hover opens the spectrum: fringes widen as the key wakes under the pointer.\
+&#x20;           const sp =\
+&#x20;               (Math.max(0, num(L.dispersion, 50)) / 50) \*\
+&#x20;               0.09 \*\
+&#x20;               (1 + 0.4 \* clampN(st.press, 0, 1)) \*\
+&#x20;               (1 + 0.7 \* st.over \* hv)\
+\
+&#x20;           const W = canvas.width\
+&#x20;           const H = canvas.height\
+&#x20;           // Placement: offsets shift the lens, Angle rolls the camera about its view axis.\
+&#x20;           const shiftX = (num(P.x, 0) / 100) \* W\
+&#x20;           const shiftY = -(num(P.y, 0) / 100) \* H\
+&#x20;           const roll = num(P.angle, 0) \* D2R\
+&#x20;           const rc = Math.cos(roll)\
+&#x20;           const rs = Math.sin(roll)\
+\
+&#x20;           // Pointer torch in canvas pixels (y up), about a third of the key wide.\
+&#x20;           f3("uPtr", (st.gx \* 0.5 + 0.5) \* W, (st.gy \* 0.5 + 0.5) \* H, Math.max(8, sizePx \* scale \* 0.32))\
+&#x20;           f1("uPtrGain", reduced ? 0 : st.over \* hv)\
+&#x20;           // Hand-held light: about ±40° across and ±20° up with the pointer around the key.\
+&#x20;           f4("uPL", st.lx \* 0.7, st.ly \* 0.35, reduced ? 0 : st.over \* hv, 0)\
+\
+&#x20;           gl.viewport(0, 0, W, H)\
+&#x20;           gl.useProgram(program)\
+&#x20;           gl.bindVertexArray(vao)\
+&#x20;           gl.activeTexture(gl.TEXTURE0)\
+&#x20;           gl.bindTexture(gl.TEXTURE_2D, tex)\
+\
+&#x20;           f2("uRes", W, H)\
+&#x20;           f2("uCentre", W \* 0.5 + shiftX, H \* 0.5 + shiftY)\
+&#x20;           f1("uPx", pxU)\
+&#x20;           f2("uRoll", rc, rs)\
+&#x20;           gl.uniformMatrix3fv(slots.uInv.loc, false, inv)\
+&#x20;           f3("uOff", pull, bob + lift - drop, 0)\
+&#x20;           f3("uTarget", 0, ty0, 0)\
+&#x20;           f1("uElev", e)\
+&#x20;           f4("uShape", bw, tw, hh, (clampN(num(A.cornerRadius, 8), 0, 40) / 100) \* 2)\
+&#x20;           const dish = (clampN(num(A.dishDepth, 4), 0, 20) / 100) \* 2\
+&#x20;           f3("uDish", 3.0, dish, TOP_ROUND)\
+&#x20;           // Wall as a share of the base half-width; the ceiling sits that far under the dish.\
+&#x20;           const wall = (clampN(num(A.wall, 10), 0, 40) / 100) \* bw\
+&#x20;           f2("uWall", wall, wall > 0 ? hh - dish - wall : 0)\
+&#x20;           f2("uIor", ior, sp)\
+&#x20;           // The softboxes sway either side of the reference layout rather than\
+&#x20;           // spinning: every face looks into one patch of the studio, so a full\
+&#x20;           // turn would leave the glass dark for most of the cycle. The pointer\
+&#x20;           // also steers them, so moving across the key slides the colour bars\
+&#x20;           // through the glass.\
+&#x20;           f1(\
+&#x20;               "uEnvRot",\
+&#x20;               LIGHT_SWAY \* Math.sin((2 \* Math.PI \* T) / Math.max(1, num(A.lightPeriod, 12000) / 1000)) +\
+&#x20;                   lean \* 0.4 \* st.lx\
+&#x20;           )\
+&#x20;           c3("uC0", A.light1Color, [1, 0.35, 0.16])\
+&#x20;           c3("uC1", A.light2Color, [1, 0.25, 0.66])\
+&#x20;           c3("uC2", A.light3Color, [0.23, 0.36, 1])\
+&#x20;           c3("uC3", A.light4Color, [0.85, 0.84, 0.9])\
+&#x20;           f4(\
+&#x20;               "uAz",\
+&#x20;               num(A.light1Angle, 172) \* D2R,\
+&#x20;               num(A.light2Angle, 152) \* D2R,\
+&#x20;               num(A.light3Angle, 186) \* D2R,\
+&#x20;               num(A.light4Angle, 183) \* D2R\
+&#x20;           )\
+&#x20;           c3("uKeyCol", A.keyColor, [0.96, 0.96, 1])\
+&#x20;           f2("uKeyDir", num(A.keyAngle, 0) \* D2R, num(A.keyHeight, 65) \* D2R)\
+&#x20;           f1("uLight", (Math.max(0, num(A.lightIntensity, 100)) / 100) \* 2.7 \* (1 + 0.3 \* st.over \* hv))\
+&#x20;           f1(\
+&#x20;               "uRim",\
+&#x20;               (Math.max(0, num(A.rimStrength, 100)) / 100) \*\
+&#x20;                   0.8 \*\
+&#x20;                   (1 + 0.3 \* clampN(st.press, 0, 1)) \*\
+&#x20;                   (1 + 0.35 \* st.over \* hv)\
+&#x20;           )\
+&#x20;           f1("uRimPow", Math.max(0.5, num(A.rimPower, 30) / 10))\
+&#x20;           f1("uGlow", (Math.max(0, num(A.glow, 8)) / 100) \* 0.6 \* (1 + 0.5 \* st.over \* hv))\
+&#x20;           c3("uLegendCol", L.legendColor, [1, 1, 1])\
+&#x20;           f1("uLegendSize", face)\
+&#x20;           // Mip level from texels per device pixel, biased sharp: the top is seen\
+&#x20;           // obliquely, and a level picked for its short axis greys thin strokes.\
+&#x20;           f1("uLegLod", Math.max(0, Math.log2(((PRINT_TEX / face) \* 0.75) / Math.max(1e-3, pxU))))\
+&#x20;           f1("uTint", printImg && !L.pr.tint ? 0 : 1)\
+&#x20;           c3("uBg", L.background, [0, 0, 0])\
+&#x20;           f1("uGrain", (clampN(num(A.grain, 35), 0, 100) / 100) \* 0.25)\
+&#x20;           // Grain only crawls while something moves; a settled frame keeps its grain.\
+&#x20;           if (!settled) frameNo = (frameNo + 1) % 4096\
+&#x20;           f1("uSeed", frameNo)\
+&#x20;           f1("uVig", (clampN(num(A.vignette, 0), 0, 100) / 100) \* 0.85)\
+\
+&#x20;           gl.drawArrays(gl.TRIANGLES, 0, 3)\
+&#x20;           if (!settled) wake()\
+&#x20;       }\
+&#x20;       wake()\
+\
+&#x20;       return () => {\
+&#x20;           disposed = true\
+&#x20;           wakeRef.current = () => {}\
+&#x20;           cancelAnimationFrame(raf)\
+&#x20;           ro.disconnect()\
+&#x20;           io.disconnect()\
+&#x20;           root.removeEventListener("pointerenter", onMove)\
+&#x20;           root.removeEventListener("pointermove", onMove)\
+&#x20;           root.removeEventListener("pointerleave", onLeave)\
+&#x20;           root.removeEventListener("pointerdown", onDown)\
+&#x20;           window\.removeEventListener("pointerup", onUp)\
+&#x20;           window\.removeEventListener("pointercancel", onLeave)\
+&#x20;           window\.removeEventListener("scroll", onScroll, { capture: true })\
+&#x20;           mq?.removeEventListener?.("change", onMq)\
+&#x20;           document.removeEventListener("visibilitychange", onVis)\
+&#x20;           canvas.removeEventListener("webglcontextlost", onLost)\
+&#x20;           canvas.removeEventListener("webglcontextrestored", onRestored)\
+&#x20;           legendDirty.current = true\
+&#x20;           if (gl.isContextLost()) return\
+&#x20;           if (tex) gl.deleteTexture(tex)\
+&#x20;           if (vao) gl.deleteVertexArray(vao)\
+&#x20;           if (program) gl.deleteProgram(program)\
+&#x20;       }\
+&#x20;   }, [generation])\
+\
+&#x20;   return (\
+&#x20;       \<div\
+&#x20;           ref={rootRef}\
+&#x20;           style={{\
+&#x20;               position: "relative",\
+&#x20;               width: "100%",\
+&#x20;               height: "100%",\
+&#x20;               ...style,\
+&#x20;               overflow: "hidden",\
+&#x20;               background,\
+&#x20;               touchAction: "pan-y",\
+&#x20;           }}\
+&#x20;       \>\
+&#x20;           \<canvas\
+&#x20;               ref={canvasRef}\
+&#x20;               style={{\
+&#x20;                   position: "absolute",\
+&#x20;                   inset: 0,\
+&#x20;                   width: "100%",\
+&#x20;                   height: "100%",\
+&#x20;                   display: "block",\
+&#x20;                   pointerEvents: "none",\
+&#x20;               }}\
+&#x20;           />\
+&#x20;       \</div>\
+&#x20;   )\
+}\
+\
+// Control order arranged in the builder.\
+\
+const \_\_originkitPresetProps = {\
+&#x20; "size": 443\
+};\
+\
+export default function BerylCap(props: Record\<string, unknown>) {\
+&#x20; return <\_\_OriginkitBase_BerylCap {...(\_\_originkitPresetProps as Record\<string, unknown>)} {...props} />;\
+}\
