@@ -31,7 +31,7 @@ the real, accessible text.
 | `src/gl/keycap.ts` | the glass key (ported BerylCap raymarcher), studio lights baked to a panorama each frame, refracts the page behind it |
 | `src/gl/passes.ts` | scene (what the glass sees), composite (white ink, inverted marks, punch shockwave, materialise), loader (white → black halftone flood) |
 | `src/gl/mask.ts` | paints the page's still white marks (type, pills, logo) into a texture so the ink can invert them |
-| `public/img/cove-reel.webp` | the brand reel (from `Image/Cove_Studio_GIF.gif`, re-timed to 150 ms a frame) played inside the CD case while it is hovered |
+| `public/img/cd-play.webm` / `.mp4` / `cd-poster.webp` | the CD (from `Image/CD_VId.webm`): still frame at rest; hovering spins the disc up and plays it on a loop, leaving winds it down. WebM keeps alpha; Safari gets the MP4 flattened onto the page colour |
 | `src/hero.ts` | wireframe globe, spring 3D tilt (wordmark, CD case), and the GPU "live marks" for things that move every frame |
 
 Moving marks (the tilted wordmark, the spinning globe) are not repainted into the mask; the shader draws

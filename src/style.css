@@ -277,27 +277,24 @@ img {
   height: auto;
 }
 
-/* the reel plays inside the case's front, turned with it */
-.hero__reel {
+/* the playing disc: the video sits exactly over the still frame */
+.hero__cd {
   position: absolute;
-  left: 17%;
-  top: 14%;
-  width: 63%;
-  height: auto;
-  aspect-ratio: 233 / 245;
-  object-fit: cover;
-  border-radius: 3px;
-  transform: perspective(520px) rotateY(-10deg) scale(0.92);
-  transform-origin: 30% 50%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   opacity: 0;
   pointer-events: none;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.45);
-  transition: opacity 0.22s var(--ease-out), transform 0.35s var(--ease-spring);
+  background: transparent;
 }
 
-.hero__case.is-playing .hero__reel {
+.hero__case.has-played .hero__cd {
   opacity: 1;
-  transform: perspective(520px) rotateY(-10deg) scale(1);
+}
+
+.hero__case.has-played .hero__case-img {
+  visibility: hidden;
 }
 
 .hero__case {

@@ -15,7 +15,6 @@
     <link rel="icon" type="image/png" href="/img/favicon.png" />
     <link rel="preload" as="image" href="/img/cat-icon.webp" />
     <link rel="preload" as="image" href="/img/cove-studio.webp" />
-    <link rel="prefetch" href="/img/cove-reel.webp" />
     <!-- Critical paint: the white loader is up before any script or stylesheet,
          and nothing else shows until the page is ready to enter. -->
     <style>
@@ -70,9 +69,9 @@
 
         <div class="hero__case" aria-hidden="true">
           <div class="hero__case-tilt">
-            <img class="hero__case-img" src="/img/cd-case.webp" alt="" width="640" height="625" />
-            <!-- hovering the case plays the reel inside it -->
-            <img class="hero__reel" alt="" width="233" height="245" />
+            <img class="hero__case-img" src="/img/cd-poster.webp" alt="" width="480" height="480" />
+            <!-- hovering the case spins the disc up and plays it; leaving winds it down -->
+            <video class="hero__cd" muted loop playsinline preload="none" disablepictureinpicture></video>
           </div>
         </div>
 

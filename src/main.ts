@@ -99,20 +99,49 @@ async function boot() {
   const cdCase = new Tilt($(".hero__case-tilt"), { maxX: 14, maxY: 18, reach: 1.6, shift: 4, perspective: 600, float: true })
   const cone = new Tilt($(".hero__cone img"), { maxX: 10, maxY: 16, reach: 1.6, shift: 4, perspective: 600, float: true })
 
-  // Hovering the case plays the brand reel inside it, from the top, on a loop;
-  // leaving stops it and unloads it so nothing decodes in the background.
+  // The CD: hovering spins the disc up and plays it on a loop; leaving winds it
+  // down to a stop where it is, like a real player. Safari cannot draw WebM
+  // with alpha, so it gets a version flattened onto the page colour.
   const caseEl = $(".hero__case")
-  const reel = $<HTMLImageElement>(".hero__reel")
+  const cd = $<HTMLVideoElement>(".hero__cd")
+  const safari = /^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent)
+  const cdSrc = safari ? "/img/cd-play.mp4" : "/img/cd-play.webm"
+  const IDLE_FRAME = 2.75 // the lime cat disc, same as the still
+  let cdTarget = 0
+  let cdRate = 0
+  let cdStarted = false
+  const loadCd = () => {
+    if (cd.src) return
+    cd.src = cdSrc
+    cd.preload = "auto"
+    cd.addEventListener("loadedmetadata", () => {
+      if (!cdStarted) cd.currentTime = IDLE_FRAME
+    }, { once: true })
+  }
   caseEl.addEventListener("pointerenter", () => {
-    reel.src = "/img/cove-reel.webp"
-    caseEl.classList.add("is-playing")
+    loadCd()
+    cdTarget = 1
+    if (cd.paused) {
+      cd.playbackRate = Math.max(0.0625, cdRate || 0.2)
+      cd.play().then(() => {
+        cdStarted = true
+        caseEl.classList.add("has-played")
+      }).catch(() => {})
+    }
   })
-  caseEl.addEventListener("pointerleave", () => {
-    caseEl.classList.remove("is-playing")
-    window.setTimeout(() => {
-      if (!caseEl.classList.contains("is-playing")) reel.removeAttribute("src")
-    }, 260)
-  })
+  caseEl.addEventListener("pointerleave", () => (cdTarget = 0))
+  const spinCd = (dt: number) => {
+    if (cd.paused && cdTarget === 0) return
+    // spin-up is quicker than the wind-down, as with a real disc
+    const k = 1 - Math.exp(-dt * (cdTarget > cdRate ? 4.5 : 3))
+    cdRate += (cdTarget - cdRate) * k
+    if (cdTarget === 0 && cdRate < 0.07) {
+      cd.pause()
+      cdRate = 0
+      return
+    }
+    cd.playbackRate = Math.max(0.0625, cdRate)
+  }
   if (stage) stage.start()
 
   const markEl = $(".hero__wordmark")
@@ -124,6 +153,7 @@ async function boot() {
     wordmark.update(dt, ptr)
     cdCase.update(dt, ptr)
     cone.update(dt, ptr)
+    spinCd(dt)
     if (!stage) return
     // hand the moving marks to the GPU, so the ink inverts them without a mask repaint
     const L = stage.live
@@ -199,6 +229,7 @@ async function boot() {
       tl.eventCallback("onComplete", () => {
         stage!.maskLive = false
         stage!.mask.dirty = true
+        loadCd()
       })
     }
   }
