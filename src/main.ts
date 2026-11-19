@@ -1,10 +1,12 @@
-import "@fontsource-variable/outfit"
-import "@fontsource/jetbrains-mono/500.css"
+import "lenis/dist/lenis.css"
 import "./style.css"
+import "./work.css"
 
 import gsap from "gsap"
+import Lenis from "lenis"
 import { Stage } from "./gl/stage"
 import { Globe, Tilt, elementInverse, globeUniforms } from "./hero"
+import { initWork } from "./work/work"
 
 const root = document.documentElement
 const $ = <T extends Element = HTMLElement>(s: string) => document.querySelector(s) as T
@@ -33,8 +35,15 @@ function decoded(img: HTMLImageElement, timeout = 2500) {
 
 async function fontsReady() {
   try {
-    await Promise.all([document.fonts.load('700 100px "Outfit Variable"'), document.fonts.load('500 12px "JetBrains Mono"')])
-    await document.fonts.ready
+    // a missing font file must not hold the loader for long
+    await Promise.race([
+      Promise.all([
+        document.fonts.load('500 100px "Helvetica Now Display"'),
+        document.fonts.load('400 16px "Helvetica Now Display"'),
+        document.fonts.load('700 16px "Helvetica Now Display"'),
+      ]).then(() => document.fonts.ready),
+      new Promise((r) => setTimeout(r, 1800)),
+    ])
   } catch {
     /* fall back to system fonts */
   }
@@ -44,7 +53,7 @@ async function fontsReady() {
 const wipe = { u: 0 }
 
 // ---------- the page's entrance, played once the screen has flooded black ----------
-function entrance(stage: Stage | null) {
+function entrance(showCat: () => void) {
   const tl = gsap.timeline({ paused: true })
   const chrome = gsap.utils.toArray<HTMLElement>(".chrome > *")
   const mark = $(".hero__wordmark")
@@ -73,20 +82,28 @@ function entrance(stage: Stage | null) {
       { opacity: 1, y: 0, duration: 0.9, ease: "power3.out", stagger: 0.1 },
       "open+=0.35",
     )
-
-  if (stage) tl.fromTo(stage, { intro: 0 }, { intro: 1, duration: 1.1, ease: "power2.inOut" }, "open+=0.15")
+    // the cat takes the stage where the key used to stand
+    .call(showCat, [], "open+=0.15")
   return tl
 }
 
 async function boot() {
+  // Smooth scroll for the whole page. The page always opens at the top, so the
+  // sections play in order; scrolling waits until the loader has finished.
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual"
+  window.scrollTo(0, 0)
+  const lenis = new Lenis({ lerp: 0.075, wheelMultiplier: 0.85, touchMultiplier: 1.4, smoothWheel: true })
+  gsap.ticker.add((t) => lenis.raf(t * 1000))
+  gsap.ticker.lagSmoothing(0)
+  lenis.stop()
+
   const canvas = $<HTMLCanvasElement>("#gl")
-  const slot = $("#key-slot")
   const loader = $(".loader")
   const loaderIcon = $(".loader__icon")
 
   let stage: Stage | null = null
   try {
-    stage = new Stage({ canvas, keySlot: slot })
+    stage = new Stage({ canvas })
   } catch (err) {
     console.warn("Cove: running without WebGL", err)
     root.classList.add("no-gl")
@@ -155,7 +172,7 @@ async function boot() {
     cone.update(dt, ptr)
     spinCd(dt)
     if (!stage) return
-    // hand the moving marks to the GPU, so the ink inverts them without a mask repaint
+    // hand the moving marks to the GPU, so the ink drags and colours them without a mask repaint
     const L = stage.live
     const dpr = stage.deviceScale
     const H = stage.deviceHeight
@@ -178,7 +195,7 @@ async function boot() {
 
   // wait for what the first screen needs; the cat waits with it
   const minWait = new Promise((r) => setTimeout(r, 700))
-  const [mark] = await Promise.all([
+  await Promise.all([
     loadImage("/img/cat-icon.webp").catch(() => null),
     decoded($<HTMLImageElement>(".hero__wordmark")),
     decoded($<HTMLImageElement>(".hero__case-img")),
@@ -186,15 +203,66 @@ async function boot() {
     fontsReady(),
     minWait,
   ])
-  if (stage && mark) stage.key.setMark(mark)
   if (stage) stage.setMarkImage($<HTMLImageElement>(".hero__wordmark"))
   stage?.mask.invalidateFonts()
+  // One ink trail for the whole page, one rule (see gl/stage.ts): white ink
+  // laid over everything in "difference", so whatever lies under it inverts.
+  // It steps aside only while a film fills the screen.
+  const heroEl = $(".hero")
+  let stageOn = true
+  let cinema = false
+  let heroShown = true
+  const syncStage = () => {
+    if (!stage || stage.loaderT !== null) return
+    if (cinema && stageOn) {
+      stageOn = false
+      stage.stop()
+      canvas.style.visibility = "hidden"
+    } else if (!cinema && !stageOn) {
+      stageOn = true
+      canvas.style.visibility = ""
+      stage.start()
+    }
+    // the hero's type moves with the page: repaint what the ink knows of it
+    const b = heroEl.getBoundingClientRect().bottom
+    if (b > 0) {
+      heroShown = true
+      stage.mask.dirty = true
+    } else if (heroShown) {
+      heroShown = false
+      stage.mask.dirty = true // one last repaint: the hero's marks are gone
+    }
+  }
+  window.addEventListener("scroll", syncStage, { passive: true })
+  window.addEventListener("resize", () => {
+    syncStage()
+    stage?.mask.invalidateFonts()
+  })
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !stageOn) stage?.stop()
+  })
 
-  const tl = entrance(stage)
+  // the Works section measures its type now that the fonts are in
+  let work: ReturnType<typeof initWork> = null
+  try {
+    work = initWork({
+      lenis,
+      catSlot: $(".hero__cat"),
+      onCinema: (on) => {
+        cinema = on
+        syncStage()
+      },
+    })
+  } catch (err) {
+    console.warn("Cove: works section failed to start", err)
+  }
+
+  const tl = entrance(() => work?.showCat())
 
   if (!stage) {
     gsap.to(loader, { opacity: 0, duration: 0.5, onComplete: () => loader.remove() })
     tl.play()
+    lenis.start()
     return
   }
 
@@ -225,22 +293,18 @@ async function boot() {
       done = true
       stage!.loaderT = null
       loader.remove()
+      // the loader is over: from here the ink inverts the page beneath it
+      canvas.classList.add("is-ink")
       tl.play()
+      lenis.start()
       tl.eventCallback("onComplete", () => {
         stage!.maskLive = false
         stage!.mask.dirty = true
         loadCd()
+        syncStage()
       })
     }
   }
-
-  // layout changes re-measure type
-  let rT = 0
-  window.addEventListener("resize", () => {
-    clearTimeout(rT)
-    rT = window.setTimeout(() => stage!.mask.invalidateFonts(), 120)
-    stage!.mask.dirty = true
-  })
 }
 
 boot()

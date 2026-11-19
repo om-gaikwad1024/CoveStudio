@@ -12,8 +12,8 @@ Sampled from the brand board (`Image/brand-board.webp`). Code source of truth: `
 | Green | `#00E676` | swatch 4 | accent / trail fringe |
 | Blue | `#0057FF` | swatch 5 | accent / trail fringe |
 | Violet | `#A100FF` | swatch 6 | accent / glass light |
-| Hot Magenta | `#FD2BC8` | the big "COVE STUDIO" card | the keycap's pink |
+| Hot Magenta | `#FD2BC8` | the big "COVE STUDIO" card | accent |
 | Electric Purple | `#753AFB` | the app-icon tile | accent / cool end of heat |
 
 Rule (from the taste study): Ink is the base, Paper is what the interaction paints with, the accents
-are rewards — they appear only when you engage (trail fringes, the punch), never as large fills.
+are rewards — they appear only when you engage, never as large fills.

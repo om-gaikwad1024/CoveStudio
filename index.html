@@ -50,9 +50,9 @@
       </div>
 
       <nav class="chrome__nav" aria-label="Primary">
-        <a class="pill" data-ink="pill" href="#works"><span class="pill__label" data-ink="text">Works</span></a>
-        <a class="pill" data-ink="pill" href="#profile"><span class="pill__label" data-ink="text">Profile</span></a>
-        <a class="pill" data-ink="pill" href="#contact"><span class="pill__label" data-ink="text">Contact</span></a>
+        <a class="pill" href="#works"><span class="pill__label">Works</span></a>
+        <a class="pill" href="#profile"><span class="pill__label">Profile</span></a>
+        <a class="pill" href="#contact"><span class="pill__label">Contact</span></a>
       </nav>
     </header>
 
@@ -65,7 +65,9 @@
           </span>
         </h1>
 
-        <div class="hero__key" id="key-slot" aria-hidden="true"></div>
+        <!-- where the 3D cat stands in the hero; the cat itself is drawn in .work-cat -->
+        <div class="hero__cat" aria-hidden="true"></div>
+        <p class="hero__scroll" data-ink="text">Scroll to experience</p>
 
         <div class="hero__case" aria-hidden="true">
           <div class="hero__case-tilt">
@@ -86,7 +88,77 @@
           <li data-ink="text">Social management</li>
         </ul>
       </section>
+
+      <section class="work" id="works" aria-labelledby="work-title">
+        <h2 class="sr-only" id="work-title">Marketing Studio — selected work</h2>
+
+        <!-- the bottom row stays with the section while it is on screen -->
+        <div class="work__bar">
+          <div class="work__bar-in">
+            <p class="work__tag"><span class="work__tag-icon"></span>Independent Tech Lead—Developer</p>
+            <nav class="work__nav" aria-label="Section">
+              <a href="#works">Projects,</a> <a href="#profile">Services,</a> <a href="#profile">About</a>
+            </nav>
+            <a class="work__contact" href="#contact">Contact</a>
+          </div>
+        </div>
+
+        <div class="work__intro">
+          <!-- words: under the ink trail, so the trail inverts them -->
+          <div class="work__stage">
+            <div class="wt wt--ink" aria-hidden="true"></div>
+            <p class="work__blurb">Over a decade of experience implementing fully custom, high-quality interactive experiences.</p>
+          </div>
+          <!-- the reel: above the ink trail, so the trail never touches it -->
+          <div class="work__media">
+            <canvas class="work__gl" aria-hidden="true"></canvas>
+            <video class="work__src" data-src="/video/work-full.mp4" muted playsinline preload="none" disablepictureinpicture aria-hidden="true"></video>
+            <div class="wt-win" aria-hidden="true"><div class="wt wt--dif"></div></div>
+            <button class="work__hit" type="button" aria-label="Play the showreel with sound"></button>
+            <span class="work__chip" aria-hidden="true"></span>
+          </div>
+        </div>
+
+        <div class="work__cards" style="--n: 5">
+          <div class="work__cards-text">
+            <p class="work__count"><span class="work__sq"></span><span class="work__count-n">(01—05)</span></p>
+            <p class="work__label work__label--sel"><span class="work__sq"></span>Selected Projects <sup>(05)</sup></p>
+            <p class="work__label work__label--all">All Projects <sup>(33)</sup></p>
+          </div>
+          <div class="work__cards-stage">
+            <div class="work__deck">
+              <button class="card" type="button" aria-label="Play project 1"><video data-src="/video/cardvid1.mp4" muted loop playsinline preload="none" poster="/video/work-poster.webp" aria-hidden="true"></video><canvas aria-hidden="true"></canvas></button>
+              <button class="card" type="button" aria-label="Play project 2"><video data-src="/video/cardvid2.mp4" muted loop playsinline preload="none" poster="/video/work-poster.webp" aria-hidden="true"></video><canvas aria-hidden="true"></canvas></button>
+              <button class="card" type="button" aria-label="Play project 3"><video data-src="/video/cardvid3.mp4" muted loop playsinline preload="none" poster="/video/work-poster.webp" aria-hidden="true"></video><canvas aria-hidden="true"></canvas></button>
+              <button class="card" type="button" aria-label="Play project 4"><video data-src="/video/cardvid4.mp4" muted loop playsinline preload="none" poster="/video/work-poster.webp" aria-hidden="true"></video><canvas aria-hidden="true"></canvas></button>
+              <button class="card" type="button" aria-label="Play project 5"><video data-src="/video/cardvid5.mp4" muted loop playsinline preload="none" poster="/video/work-poster.webp" aria-hidden="true"></video><canvas aria-hidden="true"></canvas></button>
+            </div>
+            <button class="work__next" type="button" aria-label="Next project">
+              <video muted loop playsinline preload="none" aria-hidden="true"></video>
+              <span class="work__next-chip" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+      </section>
     </main>
+
+    <!-- the cat, the cursor and the player live above the page -->
+    <canvas class="work-cat" aria-hidden="true"></canvas>
+    <div class="work-cursor" aria-hidden="true"></div>
+    <div class="cardplay" hidden>
+      <canvas class="cardplay__still" aria-hidden="true"></canvas>
+      <video class="cardplay__video" playsinline preload="none"></video>
+    </div>
+    <div class="player" role="dialog" aria-modal="true" aria-label="Showreel" hidden>
+      <button class="player__btn player__close" type="button" aria-label="Close video"></button>
+      <button class="player__btn player__sound" type="button" aria-label="Mute"></button>
+      <div class="player__bar" aria-hidden="true">
+        <span class="player__time">00:00</span>
+        <span class="player__dur">00:00</span>
+        <span class="player__track"><span class="player__fill"></span><span class="player__head"></span></span>
+      </div>
+      <div class="player__chip is-hidden" aria-hidden="true"></div>
+    </div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
