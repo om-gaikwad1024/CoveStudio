@@ -26,7 +26,6 @@ const WORDS: [string, string] = ["MARKETING", "STUDIO"]
 /** letters drawn as their pixel glyphs: the A, and the S and O of STUDIO */
 const PIXEL_AT: [number[], number[]] = [[1], [0, 5]]
 const FULL_SRC = "/video/work-full.mp4"
-const CARD_SRC = (i: number) => `/video/cardvid${i + 1}.mp4`
 /** the reel loops its first seconds while it is part of the page */
 const LOOP_END = 20
 /** screens of scrolling for the reel to grow, then to hold full screen */
@@ -61,6 +60,8 @@ const lerpRect = (a: ReelRect, b: ReelRect, t: number): ReelRect => ({
 
 export interface WorkOptions {
   lenis: Lenis
+  /** hands the section the page's scroll gate (return false: the gesture is taken) */
+  setScrollGate: (g: (e: { deltaY: number; event: Event }) => boolean) => void
   /** where the cat stands in the hero (it travels from there to the section's corner) */
   catSlot: HTMLElement
   /** the reel or a card has taken the whole screen (the page's own canvas steps aside) */
@@ -90,7 +91,6 @@ export function initWork(opts: WorkOptions) {
   const deck = Array.from(root.querySelectorAll<HTMLButtonElement>(".card"))
   const counter = q(".work__count-n")
   const nextBtn = q<HTMLButtonElement>(".work__next")
-  const nextVideo = q<HTMLVideoElement>("video", nextBtn)
   const cursor = document.querySelector<HTMLElement>(".work-cursor")!
   const catCanvas = document.querySelector<HTMLCanvasElement>(".work-cat")!
   const player = new Player(document.querySelector<HTMLElement>(".player")!)
@@ -140,6 +140,21 @@ export function initWork(opts: WorkOptions) {
   const dpr = () => Math.min(window.devicePixelRatio || 1, 1.5)
   let cat: Cat3D | null = null
   let catBase = 100
+  /** 0 hidden .. 1 shown: the cat's appearance in the Works corner */
+  let workCat = 0
+  const slamPrev = { x: -9999, y: -9999, on: false }
+  /** where the hero cat is on screen (for clicks and its backdrop) */
+  let catHero = { x: 0, y: 0, s: 0, on: false }
+  /** 0 whole .. 1 burnt away: the hero cat (runs on time, see flipDown) */
+  const heroCat = { out: 0 }
+  /** the page turning between the hero and the Works section */
+  let flip: "none" | "down" | "up" = "none"
+  /** while leaving for the hero, the corner cat burns away before the page moves */
+  let hideWorkCat = false
+  /** seconds for the cat to burn away or burn back in */
+  const BURN_TIME = 1.4
+  /** seconds for the page to rise into the section (the last quarter of the burn) */
+  const TURN_DOWN = BURN_TIME * 0.25
   let catRes = 0
   const catDpr = Math.min(window.devicePixelRatio || 1, 1.25)
   const scrollHint = document.querySelector<HTMLElement>(".hero__scroll")
@@ -249,7 +264,6 @@ export function initWork(opts: WorkOptions) {
   let lastGlitch = 0
   let nextGlitch = 3
   let activeCard = -1
-  let nextIdx = -1
   let time = 0
   let lastRect: ReelRect = frame
   let stageTop = 0
@@ -260,17 +274,17 @@ export function initWork(opts: WorkOptions) {
 
   let lastScrollAt = 0
   let settleArmed = false
-  // input time (wheel / touch), to know when a flick's momentum has died out
-  let lastInputAt = 0
-  const onInput = () => (lastInputAt = performance.now())
-  window.addEventListener("wheel", onInput, { passive: true })
-  window.addEventListener("touchmove", onInput, { passive: true })
-  /** the card the deck is resting on (null outside the deck), and whether a step is running */
-  let cardRest: number | null = null
-  let cardLock = false
   lenis.on("scroll", () => {
     lastScrollAt = performance.now()
     settleArmed = true
+  })
+  window.addEventListener("pointerdown", (e) => {
+    if (!catHero.on || !cat) return
+    const dx = catHero.x - e.clientX
+    const dy = catHero.y - e.clientY
+    const r = catHero.s * 0.38
+    // a click is a blow on the spot that was clicked
+    if (Math.abs(dx) < r && Math.abs(dy) < r * 1.1) cat.slam(-dx / catHero.s, -dy / catHero.s)
   })
 
   window.addEventListener(
@@ -301,7 +315,7 @@ export function initWork(opts: WorkOptions) {
    * The first arrival is never skipped: the page settles on the section and
    * holds still until the heading has landed, however hard it was scrolled.
    */
-  function startIntro(lock: boolean) {
+  function startIntro(lock: boolean, fromHero = false) {
     if (intro.started) return
     intro.started = true
     loadMedia()
@@ -309,11 +323,14 @@ export function initWork(opts: WorkOptions) {
     if (lock) {
       lenis.stop()
       const target = Math.round(window.scrollY + root.getBoundingClientRect().top)
-      lenis.scrollTo(target, { duration: 0.85, easing: outCubic, force: true })
+      lenis.scrollTo(target, fromHero ? { duration: TURN_DOWN, easing: inOut, force: true } : { duration: 0.85, easing: outCubic, force: true })
     }
     const tl = gsap.timeline({
+      // from the hero the page is still on its way: let the section arrive first
+      delay: fromHero ? TURN_DOWN : 0,
       onComplete: () => {
         intro.done = true
+        if (flip === "down") flip = "none"
         if (lock) lenis.start()
       },
     })
@@ -350,14 +367,24 @@ export function initWork(opts: WorkOptions) {
       })
       .then(() => {
         root.classList.add("has-cat")
+        catEntrance()
         if (intro.started) spinCat()
       })
       .catch((err) => console.warn("Cove: cat model unavailable", err))
   }
 
-  /** The hero's entrance brings the cat in. */
+  /** The hero's entrance brings the cat in: it burns in, as it burns away (waits for the model). */
+  let catEntranceDue = false
   function showCat() {
-    gsap.to(catShow, { v: 1, duration: 1.1, ease: "power2.out" })
+    catEntranceDue = true
+    if (cat?.ready) catEntrance()
+  }
+  function catEntrance() {
+    if (!catEntranceDue) return
+    catEntranceDue = false
+    catShow.v = 1
+    heroCat.out = 1
+    gsap.to(heroCat, { out: 0, duration: BURN_TIME, ease: "sine.inOut" })
   }
 
   // ---------- the reel becomes the player ----------
@@ -499,12 +526,28 @@ export function initWork(opts: WorkOptions) {
 
   hit.addEventListener("click", openReel)
   deck.forEach((card) => card.addEventListener("click", () => openCard(card)))
+  // the small card opens the main reel: up to its section, then the film
   nextBtn.addEventListener("click", () => {
-    if (nextIdx < 0) return
-    const cr = cardsWrap.getBoundingClientRect()
-    const targetTop = H - (CARD_LEAD + nextIdx) * H * CARD_UNIT
-    lenis.scrollTo(window.scrollY + (cr.top - targetTop), { duration: 1.2 })
+    if (cinema.on || cardOpen) return
+    const target = Math.round(window.scrollY + root.getBoundingClientRect().top)
+    lenis.scrollTo(target, { duration: 1.4, easing: inOut, lock: true, force: true, onComplete: () => openReel() })
   })
+  const miniCanvas = q<HTMLCanvasElement>("canvas", nextBtn)
+  function drawMini() {
+    const bw = nextBtn.clientWidth
+    const bh = nextBtn.clientHeight
+    const d = Math.min(window.devicePixelRatio || 1, 2)
+    const cw = Math.round(bw * d)
+    const chh = Math.round(bh * d)
+    if (miniCanvas.width !== cw) miniCanvas.width = cw
+    if (miniCanvas.height !== chh) miniCanvas.height = chh
+    const vw = reel.videoWidth
+    const vh = reel.videoHeight
+    if (!vw || !vh) return
+    const s = Math.max(cw / vw, chh / vh)
+    const ctx = miniCanvas.getContext("2d")!
+    ctx.drawImage(reel, (vw - cw / s) / 2, (vh - chh / s) / 2, cw / s, chh / s, 0, 0, cw, chh)
+  }
 
   // ---------- cards: lazy sources, pixel overlay ----------
   const cardVideos = deck.map((c) => c.querySelector("video")!)
@@ -535,26 +578,128 @@ export function initWork(opts: WorkOptions) {
     ctx.drawImage(v, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, cw, chh)
   }
 
-  /** Carries the deck to card i, then lets the scroll go once the input has gone quiet. */
-  function stepToCard(i: number, cardsTop: number) {
-    cardRest = i
-    cardLock = true
+  /**
+   * Leaving the hero. The first scroll down stops the page; a heat wave burns
+   * the cat away (bottom left to top right, about half a second); then the
+   * page carries itself to the Works section.
+   */
+  function flipDown() {
+    flip = "down"
     lenis.stop()
-    const y = Math.round(window.scrollY + cardsTop - H + (CARD_LEAD + i) * H * CARD_UNIT)
-    lenis.scrollTo(y, {
-      duration: 0.95,
-      easing: inOut,
-      force: true,
-      onComplete: () => {
-        const release = () => {
-          if (performance.now() - lastInputAt < 260) return void setTimeout(release, 60)
-          cardLock = false
-          if (!cinema.on && !cardOpen) lenis.start()
-        }
-        release()
-      },
+    gsap.to(heroCat, { out: 1, duration: BURN_TIME, ease: "sine.inOut" })
+    // the section starts coming up when the cat is three quarters gone and is
+    // in place as the last of it burns away
+    gsap.delayedCall(BURN_TIME * 0.75, () => {
+      if (!intro.started) return startIntro(true, true)
+      const target = Math.round(window.scrollY + root.getBoundingClientRect().top)
+      lenis.scrollTo(target, {
+        duration: TURN_DOWN,
+        easing: inOut,
+        force: true,
+        onComplete: () => {
+          flip = "none"
+          lenis.start()
+        },
+      })
     })
   }
+
+  /**
+   * Back to the hero, at twice the pace of the way down: the corner cat burns
+   * away, the page carries itself up, the hero cat forms again.
+   */
+  function flipUp() {
+    flip = "up"
+    lenis.stop()
+    hideWorkCat = true
+    gsap.delayedCall(BURN_TIME * 0.5, () => {
+      lenis.scrollTo(0, {
+        duration: 0.62,
+        easing: inOut,
+        force: true,
+        onComplete: () => {
+          hideWorkCat = false
+          gsap.to(heroCat, { out: 0, duration: BURN_TIME * 0.5, ease: "sine.inOut" })
+          flip = "none"
+          lenis.start()
+        },
+      })
+    })
+  }
+
+  // ---------- the deck: one gesture, one card ----------
+  // Inside the cards section every wheel or touch gesture moves the deck by
+  // exactly one card. The gesture is taken at the input (the page itself never
+  // scrolls inside the deck), the move is one eased glide, and the rest of that
+  // gesture (a trackpad's long inertia tail) is ignored, so one flick is always
+  // one card. Past the last card, or above the first, the page scrolls freely.
+  const STEP_TIME = 1.0
+  const easeStep = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2)
+  const deckState = { moving: false, lastEventAt: 0, gestureSpent: false }
+
+  /** Fractional deck position now: 0 = card 0 at rest, 1 = card 1 at rest… */
+  const deckPos = () => (H - cardsWrap.getBoundingClientRect().top) / (H * CARD_UNIT) - CARD_LEAD
+  /** Page scroll at which card i rests. */
+  const restY = (i: number) => Math.round(window.scrollY + cardsWrap.getBoundingClientRect().top - H + (CARD_LEAD + i) * H * CARD_UNIT)
+
+  function goToCard(i: number) {
+    deckState.moving = true
+    lenis.scrollTo(restY(i), {
+      duration: STEP_TIME,
+      easing: easeStep,
+      lock: true,
+      force: true,
+      onComplete: () => (deckState.moving = false),
+    })
+  }
+
+  /** The deck's share of the scroll gate: true if it took the gesture. */
+  function deckGesture(deltaY: number) {
+    const N = deck.length
+    const f = deckPos()
+    // the deck owns the scroll from just before card 0 to just after the last card
+    if (f < -0.62 || f > N - 1 + 0.5) return false
+    const down = deltaY > 0
+    if (down && f >= N - 1 - 0.02) return false // past the last card: let the page go on
+    if (!down && f <= 0.02 && f > -0.02) return false // above the first card: back to the reel
+    const now = performance.now()
+    const quiet = now - deckState.lastEventAt
+    deckState.lastEventAt = now
+    if (deckState.moving) return true
+    // the rest of a gesture that already moved a card is spent
+    if (deckState.gestureSpent && quiet < 180) return true
+    deckState.gestureSpent = false
+    if (Math.abs(deltaY) < 1.5) return true
+    const from = Math.round(clamp(f, 0, N - 1))
+    let to = down ? Math.floor(f + 0.02) + 1 : Math.ceil(f - 0.02) - 1
+    if (f < -0.02) to = 0 // arriving from the reel: land on the first card
+    if (f > N - 1 + 0.02) to = N - 1 // arriving from below: land on the last card
+    to = clamp(to, 0, N - 1)
+    if (to === from && Math.abs(f - from) < 0.02) return true
+    deckState.gestureSpent = true
+    goToCard(to)
+    return true
+  }
+
+  // the page's scroll gate: the page turn (hero ⇄ section) and the deck
+  opts.setScrollGate(({ deltaY, event }) => {
+    // a touch starting (no distance yet) is never taken: taps must stay taps
+    if (cinema.on || cardOpen || deltaY === 0) return true
+    let taken = false
+    if (flip !== "none") taken = true
+    else {
+      const top = root.getBoundingClientRect().top
+      if (deltaY > 0 && window.scrollY < 2 && heroCat.out < 0.5) {
+        flipDown()
+        taken = true
+      } else if (deltaY < 0 && Math.abs(top) < 2 && intro.done) {
+        flipUp()
+        taken = true
+      } else if (intro.done) taken = deckGesture(deltaY)
+    }
+    if (taken && event.cancelable) event.preventDefault()
+    return !taken
+  })
 
   // ---------- the frame loop ----------
   // All layout reads happen first, then all writes, so a frame never forces
@@ -584,32 +729,76 @@ export function initWork(opts: WorkOptions) {
     stageTop = Math.min(Math.max(ir.top, 0), ir.bottom - H)
     const p = clamp((-ir.top - HOLD * H) / (H * GROW))
 
-    // ---- the cat: the hero's centre → the section's corner → the logo's place ----
-    // q follows the section's arrival on screen, so the slide is tied to the scroll
-    const q = inOut(clamp(1 - rr.top / H))
-    const ec = inOut(clamp(p / 0.85))
-    const endLift = Math.min(0, cardsR.bottom - H)
-    let ccx = lerp(slotR.left + slotR.width / 2, cat0.x + cat0.s / 2, q)
-    let ccy = lerp(slotR.top + slotR.height / 2, cat0.y + stageTop + cat0.s / 2, q)
-    let cs = lerp(slotR.height, cat0.s, q)
-    ccx = lerp(ccx, dock.x + dock.s / 2, ec)
-    ccy = lerp(ccy, dock.y + endLift + dock.s / 2, ec)
-    cs = lerp(cs, dock.s, ec)
+    // ---- the cat ----
+    // It never travels between sections. In the hero it stands in its place;
+    // leaving, a heat wave burns it away before the page moves. Once the Works
+    // section is in place it burns back in at the section's corner (and later
+    // climbs to the logo's place). Going back up reverses both.
+    // the page turn between the hero and the section (see flipDown / flipUp)
+    const secTop = window.scrollY + rr.top
+    if (flip === "none" && !cinema.on && !cardOpen && !lenis.isStopped) {
+      const between = window.scrollY > 2 && window.scrollY < secTop - 2
+      if (between && lenis.direction > 0 && heroCat.out < 0.5) flipDown()
+      else if (between && lenis.direction < 0 && intro.done) flipUp()
+    }
+    // back at the top by any road (a key, a link) and not mid-turn: the cat forms again
+    if (flip === "none" && window.scrollY < 4 && heroCat.out > 0.001 && !gsap.isTweening(heroCat))
+      gsap.to(heroCat, { out: 0, duration: BURN_TIME, ease: "sine.inOut" })
+    const heroOut = heroCat.out
+    const wantWork = intro.started && rr.top < H * 0.35 && !hideWorkCat ? 1 : 0
+    // the Works appearance plays at the same unhurried pace once the section is in place
+    workCat = clamp(workCat + (wantWork ? dt / BURN_TIME : -dt / (hideWorkCat ? BURN_TIME * 0.5 : BURN_TIME)))
+    const inHero = heroOut < 0.999
+    let ccx: number
+    let ccy: number
+    let cs: number
+    if (inHero) {
+      ccx = slotR.left + slotR.width / 2
+      ccy = slotR.top + slotR.height / 2
+      cs = slotR.height
+    } else {
+      const ec = inOut(clamp(p / 0.85))
+      const endLift = Math.min(0, cardsR.bottom - H)
+      ccx = lerp(cat0.x + cat0.s / 2, dock.x + dock.s / 2, ec)
+      ccy = lerp(cat0.y + stageTop + cat0.s / 2, dock.y + endLift + dock.s / 2, ec)
+      cs = lerp(cat0.s, dock.s, ec)
+    }
+    const dissolve = inHero ? heroOut : 1 - inOut(workCat)
     let onCat = false
-    if (ptr.in && !coarse && !cinema.on && !cardOpen) {
+    if (ptr.in && !coarse && !cinema.on && !cardOpen && dissolve < 0.5) {
       const r = cs * 0.38
       onCat = Math.abs(ptr.x - ccx) < r && Math.abs(ptr.y - ccy) < r * 1.1
     }
-    const catOn = !!cat?.ready && catShow.v > 0.001 && ccy - cs < H && ccy + cs > 0 && !cinema.on && !cardOpen
+    // a slam: the pointer arriving on the hero cat fast is a blow on the spot it
+    // lands on (the cat flashes there and a heat ring spreads from it)
+    const pdt = Math.max(1 / 240, dt)
+    const pdx = ptr.x - slamPrev.x
+    const pdy = ptr.y - slamPrev.y
+    const speed = Math.hypot(pdx, pdy) / pdt
+    if (inHero && onCat && !slamPrev.on && speed > 900 && slamPrev.x > -9000) cat?.slam((ptr.x - ccx) / cs, (ptr.y - ccy) / cs)
+    slamPrev.x = ptr.x
+    slamPrev.y = ptr.y
+    slamPrev.on = onCat
+    catHero = { x: ccx, y: ccy, s: cs, on: inHero && dissolve < 0.5 }
+    const catOn = !!cat?.ready && catShow.v > 0.001 && dissolve < 0.999 && ccy - cs < H && ccy + cs > 0 && !cinema.on && !cardOpen
     catCanvas.style.visibility = catOn ? "visible" : "hidden"
     if (catOn && cat) {
       const half = (catBase * CAT_FRAME) / 2
       catCanvas.style.transform = `translate3d(${(ccx - half).toFixed(1)}px, ${(ccy - half).toFixed(1)}px, 0) scale(${(cs / catBase).toFixed(4)})`
       catCanvas.style.opacity = String(catShow.v)
-      // matte gold in the hero, turning into the sketch as it leaves
-      cat.gold = 1 - q
+      // matte grey with the heat wave in the hero, the sketch in the Works section
+      cat.gold = inHero ? 1 : 0
+      cat.dissolve = dissolve
       cat.setHatchScale((cs * CAT_FRAME * (window.devicePixelRatio || 1)) / Math.max(1, catRes))
-      cat.yawTarget = onHit || onCard || onCat ? CAT_HOVER : CAT_REST
+      // in the hero the cat turns to face the pointer, wherever it is; in its
+      // corner it turns to look at what you are pointing at
+      if (inHero) {
+        cat.look = ptr.in ? { x: clamp((ptr.x - ccx) / (W * 0.45), -1, 1), y: clamp((ptr.y - ccy) / (H * 0.55), -1, 1) } : null
+        if (!ptr.in) cat.yawTarget = CAT_REST
+      } else {
+        cat.look = null
+        cat.yawTarget = onHit || onCard || onCat ? CAT_HOVER : CAT_REST
+      }
       cat.update(dt)
     }
 
@@ -619,12 +808,12 @@ export function initWork(opts: WorkOptions) {
     // section's top lands on it exactly, so the section always sits in place
     if (settleArmed && performance.now() - lastScrollAt > 220 && intro.done && !cinema.on && !cardOpen && !lenis.isStopped) {
       settleArmed = false
-      if ((rr.top < -1 && rr.top > -HOLD * H) || (rr.top > 1 && rr.top < H * 0.12))
+      if (rr.top < -1 && rr.top > -HOLD * H)
         lenis.scrollTo(Math.round(window.scrollY + rr.top), { duration: 0.65, easing: outCubic })
     }
 
     if (!near && !cinema.on) {
-      if (!reel.paused) reel.pause()
+      if (!reel.paused && !(cardsR.top <= 1 && cardsR.bottom >= H - 1)) reel.pause()
       cursor.style.opacity = "0"
       return
     }
@@ -681,6 +870,9 @@ export function initWork(opts: WorkOptions) {
       const amt = Math.max(introAmt, hoverAmt)
       if (intro.started) gl.render(rect, pix, amt, sweep)
       else gl.clear()
+    } else if (cardsR.top <= 1 && cardsR.bottom >= H - 1 && !cardOpen) {
+      // the cards' small card shows the reel: keep it running (looped above)
+      playReel()
     } else if (!reel.paused) reel.pause()
 
     // ---- idle hiccups in the heading ----
@@ -712,22 +904,6 @@ export function initWork(opts: WorkOptions) {
         lead = i
       }
     }
-    // One card per scroll. Once a card has been scrolled past its middle the
-    // page takes over: it carries it the rest of the way to the next card and
-    // holds still until the flick that did it has died out, so momentum can
-    // never fling the deck through several cards at once.
-    const f = u - CARD_LEAD
-    if (!cardLock && intro.done && !cinema.on && !cardOpen) {
-      if (cardRest === null) {
-        if (pinned && f > -0.05 && f < N - 1 + 0.05) cardRest = Math.round(clamp(f, 0, N - 1))
-      } else if (Math.abs(f - cardRest) > 1.2 && f > -0.4 && f < N - 1 + 0.4) {
-        // a jump (a link, a button), not a scroll: rest on the card it landed by
-        cardRest = Math.round(clamp(f, 0, N - 1))
-      } else if (f > cardRest + 0.3 && cardRest < N - 1) stepToCard(cardRest + 1, cardsR.top)
-      else if (f < cardRest - 0.3 && cardRest > 0) stepToCard(cardRest - 1, cardsR.top)
-      else if (f < -0.4 || f > N - 1 + 0.4) cardRest = null
-    }
-
     const cx0 = W * 0.5
     deck.forEach((card, i) => {
       const s = u - CARD_LEAD - i // -1 appearing .. 0 full size .. 1 peeled away
@@ -778,17 +954,10 @@ export function initWork(opts: WorkOptions) {
       activeCard = act
       counter.textContent = `(${String(act + 1).padStart(2, "0")}—${String(N).padStart(2, "0")})`
     }
-    const nx = act + 1 < N ? act + 1 : -1
-    if (nx !== nextIdx) {
-      nextIdx = nx
-      if (nx >= 0) {
-        // a still of the next project (a second playing video costs too much)
-        nextVideo.preload = "auto"
-        nextVideo.src = CARD_SRC(nx)
-        nextVideo.addEventListener("loadedmetadata", () => (nextVideo.currentTime = 0.8), { once: true })
-      }
-    }
-    nextBtn.classList.toggle("is-on", pinned && nx >= 0 && u > 1)
+    // the small card: the main reel, drawn from the reel itself (no second video)
+    const miniOn = pinned && u > 1
+    nextBtn.classList.toggle("is-on", miniOn)
+    if (miniOn && reel.readyState >= 2) drawMini()
 
     // pixel overlay on the hovered card
     if (pxCard && pxCard !== onCard) pxCard.classList.remove("is-px")

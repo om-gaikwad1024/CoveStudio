@@ -1,7 +1,7 @@
 import { spectrumGlsl } from "../palette"
 
 // Fragment shaders for the page passes:
-//   COMPOSITE  – the ink trail: white liquid, dragged type and edge colour, solved for the page's "difference" blend
+//   COMPOSITE  – the ink trail: white liquid, inverted and dragged type, colour at the cut edge
 //   LOADER     – the opening micro-story, drawn over everything until it lets go
 
 const HEAD = `#version 300 es
@@ -117,27 +117,20 @@ void main() {
     float d = texture(uDye, uv).r;   // the fluid's surface tension already rounds the field
     float ink = inkCover(d);
 
-    // What the trail shows inside itself, as it always has: a flat white
-    // liquid; type inside it flips to the base colour, and the page under the
-    // liquid is read where the flow dragged it from, so letters smear and curl
-    // with the trail, then slide back as it relaxes. Where the liquid's edge
-    // crosses a letter, the cut carries a slowly drifting band of palette colour.
-    float mCur = maskAt(uv);
-    float mDrag = maskAt(uv + texture(uOffset, uv).xy);
+    // A flat white liquid. Type inside it flips to the base colour, and the
+    // page under the liquid is read where the flow dragged it from, so letters
+    // smear and curl with the trail, then slide back as it relaxes. Where the
+    // liquid's edge crosses a letter, the cut carries a slowly drifting band of
+    // palette colour. The ink covers the page: what you see inside it is this.
+    // (Past the hero there are no marks: it is plain white, and that part of the
+    // trail is shown through an inverting copy, see main.ts.)
+    float m = maskAt(uv + texture(uOffset, uv).xy);
     float ePx = (d - uThreshold) / max(fwidth(d), 1e-5);   // px inside the edge
     float k = ePx / (7.0 * uDpr);
-    float fringe = mDrag * step(0.0, ePx) * (1.0 - smoothstep(0.55, 1.0, k));
-    float drift = uTime * 0.045 + (frag.x + frag.y) / (2600.0 * uDpr) + k * 0.1;
+    float fringe = m * step(0.0, ePx) * (1.0 - smoothstep(0.55, 1.0, k));
+    float drift = uTime * 0.09 + (frag.x + frag.y) / (2600.0 * uDpr) + k * 0.1;
     vec3 letter = mix(uBase, spectrum(drift), fringe);
-    vec3 want = mix(vec3(1.0), letter, mDrag);
-
-    // The canvas is blended over the page in "difference" (one rule for the
-    // whole site: whatever is under the ink inverts). So draw the colour that,
-    // differenced with the page here, gives what we want to see: over the hero's
-    // black ground that is the colour itself; over its white type, its inverse.
-    // Where there are no marks (everywhere past the hero) this is plain white,
-    // and the page simply inverts: lime turns deep blue, black type turns white.
-    vec3 col = mix(want, 1.0 - want, mCur);
+    vec3 col = mix(vec3(1.0), letter, m);
 
     float g = hash12(frag + uSeed * 17.0) - 0.5;
     col = clamp(col + g * uGrain, 0.0, 1.0);

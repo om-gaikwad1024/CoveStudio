@@ -49,8 +49,31 @@ async function fontsReady() {
   }
 }
 
-/** Entrance wipe of the wordmark, shared by the DOM clip and the GPU mark. */
+/** Entrance of the wordmark (0 hidden .. 1 whole), shared by the DOM and the GPU mark. */
 const wipe = { u: 0 }
+
+/**
+ * The wordmark burns in the way the cat burns away: a soft front sweeps across
+ * it from the top right to the bottom left, and behind the front it shimmers
+ * in a heat haze that settles as it lands, with a warm glow that cools off.
+ */
+function burnIn(mark: HTMLElement, p: number) {
+  const disp = document.querySelector("#heat-in feDisplacementMap")
+  if (p >= 1) {
+    mark.style.removeProperty("mask-image")
+    mark.style.removeProperty("-webkit-mask-image")
+    mark.style.filter = ""
+    disp?.setAttribute("scale", "0")
+    return
+  }
+  const f = -18 + p * 136 // the front's position along the diagonal, %
+  const mask = `linear-gradient(to bottom left, #000 ${(f - 16).toFixed(1)}%, rgba(0,0,0,0.35) ${(f - 6).toFixed(1)}%, transparent ${f.toFixed(1)}%)`
+  mark.style.setProperty("mask-image", mask)
+  mark.style.setProperty("-webkit-mask-image", mask)
+  const heat = Math.pow(1 - p, 1.4)
+  disp?.setAttribute("scale", (64 * heat).toFixed(1))
+  mark.style.filter = `url(#heat-in) drop-shadow(0 0 ${(6 + 22 * heat).toFixed(1)}px rgba(255, 140, 60, ${(0.75 * heat).toFixed(3)}))`
+}
 
 // ---------- the page's entrance, played once the screen has flooded black ----------
 function entrance(showCat: () => void) {
@@ -60,18 +83,18 @@ function entrance(showCat: () => void) {
 
   tl.addLabel("open", 0)
     .call(() => root.classList.remove("is-loading"), [], 0)
-    // the wordmark wipes in from the left (its transform belongs to the tilt)
+    // the wordmark burns in through a heat haze (its transform belongs to the tilt)
+    .call(() => burnIn(mark, 0), [], "open")
     .set(mark, { opacity: 1 }, "open")
     .fromTo(
       wipe,
       { u: 0 },
       {
         u: 1,
-        duration: 1.15,
-        ease: "expo.out",
-        onUpdate: () => {
-          mark.style.clipPath = wipe.u >= 1 ? "" : `inset(-10% ${((1 - wipe.u) * 100).toFixed(2)}% -10% 0%)`
-        },
+        duration: 1.4,
+        ease: "sine.inOut",
+        onUpdate: () => burnIn(mark, wipe.u),
+        onComplete: () => burnIn(mark, 1),
       },
       "open",
     )
@@ -82,17 +105,29 @@ function entrance(showCat: () => void) {
       { opacity: 1, y: 0, duration: 0.9, ease: "power3.out", stagger: 0.1 },
       "open+=0.35",
     )
-    // the cat takes the stage where the key used to stand
-    .call(showCat, [], "open+=0.15")
+    // the cat burns in with it
+    .call(showCat, [], "open")
   return tl
 }
+
+// nothing on the page is draggable (images, or a selection carrying them)
+document.addEventListener("dragstart", (e) => e.preventDefault())
 
 async function boot() {
   // Smooth scroll for the whole page. The page always opens at the top, so the
   // sections play in order; scrolling waits until the loader has finished.
   if ("scrollRestoration" in history) history.scrollRestoration = "manual"
   window.scrollTo(0, 0)
-  const lenis = new Lenis({ lerp: 0.075, wheelMultiplier: 0.85, touchMultiplier: 1.4, smoothWheel: true })
+  // every wheel / touch gesture passes a gate first: a section that owns the
+  // gesture (the page turn, the card deck) takes it and the page does not scroll
+  let scrollGate: ((e: { deltaY: number; event: Event }) => boolean) | null = null
+  const lenis = new Lenis({
+    lerp: 0.075,
+    wheelMultiplier: 0.85,
+    touchMultiplier: 1.4,
+    smoothWheel: true,
+    virtualScroll: (e) => (scrollGate ? scrollGate(e as { deltaY: number; event: Event }) : true),
+  })
   gsap.ticker.add((t) => lenis.raf(t * 1000))
   gsap.ticker.lagSmoothing(0)
   lenis.stop()
@@ -214,13 +249,16 @@ async function boot() {
   let heroShown = true
   const syncStage = () => {
     if (!stage || stage.loaderT !== null) return
+    const difEl = document.getElementById("gl-dif")
     if (cinema && stageOn) {
       stageOn = false
       stage.stop()
       canvas.style.visibility = "hidden"
+      if (difEl) difEl.style.visibility = "hidden"
     } else if (!cinema && !stageOn) {
       stageOn = true
       canvas.style.visibility = ""
+      if (difEl) difEl.style.visibility = ""
       stage.start()
     }
     // the hero's type moves with the page: repaint what the ink knows of it
@@ -247,6 +285,7 @@ async function boot() {
   try {
     work = initWork({
       lenis,
+      setScrollGate: (g) => (scrollGate = g),
       catSlot: $(".hero__cat"),
       onCinema: (on) => {
         cinema = on
@@ -278,6 +317,38 @@ async function boot() {
   const freeze = import.meta.env.DEV ? parseFloat(new URLSearchParams(location.search).get("freeze") || "") : NaN
   if (import.meta.env.DEV) (window as any).__cove = { stage, tl }
 
+  // Above the hero's bottom edge the ink is the original trail (#gl, normal
+  // blending). Below it the same pixels are shown through #gl-dif in
+  // "difference", so they invert the section underneath. While the edge is on
+  // screen both show, each clipped to its side; otherwise only one does.
+  const dif = $<HTMLCanvasElement>("#gl-dif")
+  const difCtx = dif.getContext("2d")
+  let inkReady = false
+  let lastSplit = ""
+  stage.afterFrame = () => {
+    if (!inkReady) return
+    const H = window.innerHeight
+    const b = heroEl.getBoundingClientRect().bottom
+    let mode: string
+    if (b >= H - 0.5) mode = "hero"
+    else if (b <= 0.5) mode = "page"
+    else mode = "split"
+    const key = mode === "split" ? `split:${b.toFixed(1)}` : mode
+    if (key !== lastSplit) {
+      lastSplit = key
+      canvas.style.mixBlendMode = mode === "page" ? "difference" : ""
+      canvas.style.clipPath = mode === "split" ? `inset(0 0 ${(H - b).toFixed(1)}px 0)` : ""
+      dif.style.display = mode === "split" ? "block" : "none"
+      if (mode === "split") dif.style.clipPath = `inset(${b.toFixed(1)}px 0 0 0)`
+    }
+    if (mode === "split" && difCtx) {
+      if (dif.width !== canvas.width) dif.width = canvas.width
+      if (dif.height !== canvas.height) dif.height = canvas.height
+      difCtx.clearRect(0, 0, dif.width, dif.height)
+      difCtx.drawImage(canvas, 0, 0)
+    }
+  }
+
   stage.maskLive = true
   stage.loaderT = 0
   let done = false
@@ -293,8 +364,8 @@ async function boot() {
       done = true
       stage!.loaderT = null
       loader.remove()
-      // the loader is over: from here the ink inverts the page beneath it
-      canvas.classList.add("is-ink")
+      // the loader is over: from here the ink follows the hero's edge
+      inkReady = true
       tl.play()
       lenis.start()
       tl.eventCallback("onComplete", () => {

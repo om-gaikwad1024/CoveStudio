@@ -1,11 +1,11 @@
 // One canvas, one loop: the page's ink trail and the opening loader.
 //
-// The rule for the trail, everywhere on the site: the canvas is laid over the
-// page in "difference" (see style.css), so whatever sits under it inverts where
-// it passes (black ground → white, white type → black, lime → deep blue), and
-// whatever must stay untouched (the reel, the cards, buttons, the 3D cat, the
-// CD and cone) is layered above it. In the hero it also knows where the type
-// is (the mask), so letters drag with the flow and the cut edge carries colour.
+// The trail, everywhere on the site, inverts what it crosses; the reel, the
+// cards, the 3D cat, the CD and the cone sit above it and stay untouched.
+// In the hero it is the original trail: the ink covers the page and draws the
+// hero's type (the mask) inverted inside itself, dragged by the flow, with
+// colour where its edge cuts a letter. Past the hero the same ink is shown in
+// "difference" over the page (see main.ts), so it inverts whatever is there.
 
 import { Fluid, DEFAULT_FLUID } from "./fluid"
 import { GL, Program, blit } from "./gl"
@@ -63,6 +63,8 @@ export class Stage {
   readonly ptr: PointerState = { x: -9999, y: -9999, over: false, down: false }
   private lastPtr = { x: 0, y: 0, has: false }
   private moves: { x: number; y: number }[] = []
+  /** where the browser predicts the pointer will be next (drawn ahead, never committed) */
+  private predicted: { x: number; y: number } | null = null
   private coarse = matchMedia("(pointer: coarse)").matches
 
   /** Loader: <0 waiting, then seconds into the sequence; null once finished. */
@@ -92,6 +94,8 @@ export class Stage {
   private W = 1
   private H = 1
   onFrame: ((dt: number) => void) | null = null
+  /** runs right after the frame is drawn (the drawing buffer is still valid) */
+  afterFrame: (() => void) | null = null
 
   constructor(opts: StageOptions) {
     this.canvas = opts.canvas
@@ -186,6 +190,10 @@ export class Stage {
     this.ptr.x = e.clientX
     this.ptr.y = e.clientY
     this.ptr.over = true
+    // The cursor is drawn by the system a frame or two ahead of what we render.
+    // The browser's own prediction lets the trail's head sit under it.
+    const pred = e.getPredictedEvents ? e.getPredictedEvents() : []
+    this.predicted = pred.length ? { x: pred[pred.length - 1].clientX, y: pred[pred.length - 1].clientY } : null
   }
   private onDown = (e: PointerEvent) => {
     this.ptr.down = true
@@ -198,7 +206,10 @@ export class Stage {
   // Ink is laid only where a pointer or a finger actually moves: nothing
   // draws on its own, so a still page stays still on every device.
   private feedPointer() {
-    if (!this.moves.length) return
+    if (!this.moves.length) {
+      this.predicted = null
+      return
+    }
     const minDim = Math.min(this.cssW, this.cssH)
     for (const m of this.moves) {
       if (!this.lastPtr.has) {
@@ -209,13 +220,14 @@ export class Stage {
       const dy = m.y - this.lastPtr.y
       const dist = Math.hypot(dx, dy)
       if (dist < 0.5) continue
-      // stamps every ~7px so fast swipes stay continuous; heavier when slow
-      const steps = Math.min(10, Math.max(1, Math.ceil(dist / 7)))
+      // stamps every ~7px so fast swipes stay continuous (up to 28 a frame);
+      // the ink is spread so a stroke carries as much as it always has
+      const steps = Math.min(28, Math.max(1, Math.ceil(dist / 7)))
       const speed = clamp(dist / 40, 0, 1)
       // slow: one fat blob riding the cursor; fast: a slimmer, even band
       // (0.8: the trail runs 20% narrower than first tuned; its length is unchanged)
       const radius = 0.8 * (0.04 - speed * 0.0128) * (900 / Math.max(500, minDim)) ** 0.15
-      const ink = (0.36 + (1 - speed) * 0.16) / Math.sqrt(steps)
+      const ink = ((0.36 + (1 - speed) * 0.16) * Math.sqrt(Math.min(steps, 10))) / steps
       // the push given to the liquid is capped, so a flick cannot throw it into a swirl
       const fx = clamp((dx / steps) * 5.5, -90, 90)
       const fy = clamp((-dy / steps) * 5.5, -90, 90)
@@ -229,6 +241,24 @@ export class Stage {
       this.lastPtr.y = m.y
     }
     this.moves.length = 0
+    // a light lead from the last real point toward the predicted one; the path
+    // still continues from the real point next frame
+    const p = this.predicted
+    this.predicted = null
+    if (p && this.lastPtr.has) {
+      const dx = p.x - this.lastPtr.x
+      const dy = p.y - this.lastPtr.y
+      const dist = Math.hypot(dx, dy)
+      if (dist > 2 && dist < 160) {
+        const steps = Math.min(8, Math.ceil(dist / 9))
+        const speed = clamp(dist / 40, 0, 1)
+        const radius = 0.8 * (0.04 - speed * 0.0128) * (900 / Math.max(500, minDim)) ** 0.15 * 0.85
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps
+          this.fluid.splat((this.lastPtr.x + dx * t) / this.cssW, 1 - (this.lastPtr.y + dy * t) / this.cssH, 0, 0, 0.16 / steps, 0, radius)
+        }
+      }
+    }
   }
 
   // ---------- layout ----------
@@ -303,6 +333,7 @@ export class Stage {
     this.time += dt
     this.onFrame?.(dt)
     this.frame(dt)
+    this.afterFrame?.()
   }
 
   private frame(dt: number) {

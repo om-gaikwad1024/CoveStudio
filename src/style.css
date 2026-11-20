@@ -93,6 +93,24 @@ img {
   user-select: none;
 }
 
+.fx-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* the hero is a picture, not text to select: no selection, so nothing in it
+   (the wordmark, the cat, the CD) can be dragged out as a selection */
+.hero,
+.chrome,
+.work__stage,
+.work__media,
+.work__cards-stage {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -127,11 +145,12 @@ img {
 }
 
 /* ---------- the living surface ---------- */
-/* The ink trail. One rule for the whole site: white liquid laid over the page
-   in "difference", so whatever lies under it inverts. Layers that must stay
+/* The ink trail. It inverts whatever it crosses; layers that must stay
    untouched (the reel, the cards, the 3D cat, the CD and the cone) sit above
-   it (z > 20); everything else, all the type, sits under it (z < 20).
-   During the loader it draws normally (the loader is the canvas itself). */
+   it (z > 20), everything else under it (z < 20). In the hero the canvas covers
+   the page and draws the inverted type itself (the original trail). Past the
+   hero the ink is shown in "difference" instead: main.ts splits the screen at
+   the hero's bottom edge between #gl and an inverting copy, #gl-dif. */
 #gl {
   position: fixed;
   inset: 0;
@@ -143,7 +162,15 @@ img {
   display: block;
 }
 
-#gl.is-ink {
+#gl-dif {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100lvh;
+  z-index: 20;
+  pointer-events: none;
+  display: none;
   mix-blend-mode: difference;
 }
 
@@ -192,12 +219,6 @@ img {
   align-items: center;
   padding: clamp(18px, 2.6vw, 36px) var(--gutter) 0;
   pointer-events: none;
-}
-
-/* buttons sit above the ink trail (z > 20): it passes under them, untouched */
-.chrome__nav {
-  position: relative;
-  z-index: 21;
 }
 
 .chrome > * {
@@ -250,7 +271,6 @@ img {
   padding: 0 clamp(14px, 1.3vw, 21px);
   border: 2px solid var(--paper);
   border-radius: 999px;
-  background: var(--base);
   font-weight: 700;
   font-size: clamp(12px, 0.98vw, 15.5px);
   letter-spacing: 0.02em;
