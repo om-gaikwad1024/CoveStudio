@@ -53,8 +53,8 @@ ready. Nothing in the hero can be selected or dragged (`draggable="false"`, `use
 
 Hero ⇄ Works is a page turn, taken at the scroll input before the page moves (`flipDown` / `flipUp`).
 Down: a heat front burns the cat away from bottom left to top right (`BURN_TIME` 1.4 s); when it is 75%
-gone the section starts coming up, and it is in place as the last of the cat burns away (`TURN_DOWN`,
-the last quarter of the burn). The cat then burns back in at the section's corner as the sketch (grey
+gone the section starts coming up and glides into place over 1.3 s on an even sine ease (`TURN_DOWN`,
+`turnEase`): a slow, controlled move rather than a jump. The heading starts as the section settles. The cat then burns back in at the section's corner as the sketch (grey
 clay, hatching, lime outline). Up, from the section's top, at twice the pace: the corner cat burns away
 (0.7 s), the page carries itself up (0.62 s), the black cat burns back in (0.7 s). Back at the top by any
 other road, the cat forms again on its own. The cat's drawing buffer never changes size (resizing
@@ -122,7 +122,9 @@ scrolls there on its own: the gesture moves the deck exactly one card in one eas
 of that gesture (a trackpad's inertia tail) is ignored. Arriving from the reel lands on the first card;
 past the last card, or above the first, the page scrolls freely again. A touch with no distance yet is
 never taken, so taps stay taps. The small card at the bottom right shows the main reel (drawn from the
-reel itself, so no second video and nothing reloads as the cards change); clicking it takes the page up to
+reel itself, so no second video and nothing reloads as the cards change). Leaving the deck is decided
+by direction alone (at or above card 0 going up, at or past the last card going down), checked after
+the spent-gesture rule so a flick that lands on an end card never carries on out of the deck; clicking it takes the page up to
 the reel and opens it.
 
 Hold and settle: the first 0.35 screen of scrolling past the section's top moves nothing (`HOLD` in

@@ -153,8 +153,13 @@ export function initWork(opts: WorkOptions) {
   let hideWorkCat = false
   /** seconds for the cat to burn away or burn back in */
   const BURN_TIME = 1.4
-  /** seconds for the page to rise into the section (the last quarter of the burn) */
-  const TURN_DOWN = BURN_TIME * 0.25
+  /**
+   * seconds for the page to rise into the section. It starts when the cat is
+   * three quarters gone and glides on an even ease, so the screen of travel
+   * reads as one slow, controlled move rather than a jump.
+   */
+  const TURN_DOWN = 1.3
+  const turnEase = (t: number) => (1 - Math.cos(Math.PI * t)) / 2
   let catRes = 0
   const catDpr = Math.min(window.devicePixelRatio || 1, 1.25)
   const scrollHint = document.querySelector<HTMLElement>(".hero__scroll")
@@ -323,11 +328,12 @@ export function initWork(opts: WorkOptions) {
     if (lock) {
       lenis.stop()
       const target = Math.round(window.scrollY + root.getBoundingClientRect().top)
-      lenis.scrollTo(target, fromHero ? { duration: TURN_DOWN, easing: inOut, force: true } : { duration: 0.85, easing: outCubic, force: true })
+      lenis.scrollTo(target, fromHero ? { duration: TURN_DOWN, easing: turnEase, force: true } : { duration: 0.85, easing: outCubic, force: true })
     }
     const tl = gsap.timeline({
-      // from the hero the page is still on its way: let the section arrive first
-      delay: fromHero ? TURN_DOWN : 0,
+      // from the hero the page is still on its way: the heading starts as the
+      // section is settling into place
+      delay: fromHero ? TURN_DOWN * 0.85 : 0,
       onComplete: () => {
         intro.done = true
         if (flip === "down") flip = "none"
@@ -587,14 +593,14 @@ export function initWork(opts: WorkOptions) {
     flip = "down"
     lenis.stop()
     gsap.to(heroCat, { out: 1, duration: BURN_TIME, ease: "sine.inOut" })
-    // the section starts coming up when the cat is three quarters gone and is
-    // in place as the last of it burns away
+    // the section starts coming up when the cat is three quarters gone, and
+    // glides into place
     gsap.delayedCall(BURN_TIME * 0.75, () => {
       if (!intro.started) return startIntro(true, true)
       const target = Math.round(window.scrollY + root.getBoundingClientRect().top)
       lenis.scrollTo(target, {
         duration: TURN_DOWN,
-        easing: inOut,
+        easing: turnEase,
         force: true,
         onComplete: () => {
           flip = "none"
@@ -660,20 +666,26 @@ export function initWork(opts: WorkOptions) {
     // the deck owns the scroll from just before card 0 to just after the last card
     if (f < -0.62 || f > N - 1 + 0.5) return false
     const down = deltaY > 0
-    if (down && f >= N - 1 - 0.02) return false // past the last card: let the page go on
-    if (!down && f <= 0.02 && f > -0.02) return false // above the first card: back to the reel
     const now = performance.now()
     const quiet = now - deckState.lastEventAt
     deckState.lastEventAt = now
     if (deckState.moving) return true
-    // the rest of a gesture that already moved a card is spent
+    // the rest of a gesture that already moved a card is spent (so a flick that
+    // lands on the first or last card never carries on out of the deck)
     if (deckState.gestureSpent && quiet < 180) return true
     deckState.gestureSpent = false
+    // Leaving is decided by direction alone: at or above the first card going
+    // up, the page goes back to the reel; at or past the last going down, it
+    // goes on. (Checking only a small band around card 0 meant the first few
+    // pixels of the way up counted as "arriving from the reel" and snapped the
+    // page back to card 0, so the cards could never be left upward.)
+    if (down && f >= N - 1 - 0.02) return false
+    if (!down && f <= 0.02) return false
     if (Math.abs(deltaY) < 1.5) return true
     const from = Math.round(clamp(f, 0, N - 1))
     let to = down ? Math.floor(f + 0.02) + 1 : Math.ceil(f - 0.02) - 1
-    if (f < -0.02) to = 0 // arriving from the reel: land on the first card
-    if (f > N - 1 + 0.02) to = N - 1 // arriving from below: land on the last card
+    if (down && f < -0.02) to = 0 // arriving from the reel: land on the first card
+    if (!down && f > N - 1 + 0.02) to = N - 1 // arriving from below: land on the last card
     to = clamp(to, 0, N - 1)
     if (to === from && Math.abs(f - from) < 0.02) return true
     deckState.gestureSpent = true
