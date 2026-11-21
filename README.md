@@ -55,8 +55,10 @@ Hero ⇄ Works is a page turn, taken at the scroll input before the page moves (
 Down: a heat front burns the cat away from bottom left to top right (`BURN_TIME` 1.4 s); when it is 75%
 gone the section starts coming up and glides into place over 1.3 s on an even sine ease (`TURN_DOWN`,
 `turnEase`): a slow, controlled move rather than a jump. The heading starts as the section settles. The cat then burns back in at the section's corner as the sketch (grey
-clay, hatching, lime outline). Up, from the section's top, at twice the pace: the corner cat burns away
-(0.7 s), the page carries itself up (0.62 s), the black cat burns back in (0.7 s). Back at the top by any
+clay, hatching, lime outline). Up, from the section's top, quicker but with the same overlapping glide:
+the corner cat burns away (0.7 s); when it is 75% gone the page rises on the same sine ease (`TURN_UP`
+1.1 s); at 75% of the glide the black cat starts burning back in (0.9 s), and the page takes input again
+once the cat is half formed (about 2.2 s in all). Back at the top by any
 other road, the cat forms again on its own. The cat's drawing buffer never changes size (resizing
 mid-scroll stutters).
 

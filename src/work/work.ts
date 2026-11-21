@@ -610,25 +610,39 @@ export function initWork(opts: WorkOptions) {
     })
   }
 
+  /** seconds for the page to glide back up to the hero */
+  const TURN_UP = 1.1
   /**
-   * Back to the hero, at twice the pace of the way down: the corner cat burns
-   * away, the page carries itself up, the hero cat forms again.
+   * Back to the hero, quicker than the way down but with the same overlapping
+   * glide: the corner cat burns away (0.7 s); when it is three quarters gone
+   * the page starts rising on the even sine ease; as the hero settles (75% of
+   * the glide) the hero cat starts burning back in. The page takes input again
+   * once the cat is half formed.
    */
   function flipUp() {
     flip = "up"
     lenis.stop()
     hideWorkCat = true
-    gsap.delayedCall(BURN_TIME * 0.5, () => {
+    const corner = BURN_TIME * 0.5
+    gsap.delayedCall(corner * 0.75, () => {
       lenis.scrollTo(0, {
-        duration: 0.62,
-        easing: inOut,
+        duration: TURN_UP,
+        easing: turnEase,
         force: true,
-        onComplete: () => {
-          hideWorkCat = false
-          gsap.to(heroCat, { out: 0, duration: BURN_TIME * 0.5, ease: "sine.inOut" })
-          flip = "none"
-          lenis.start()
-        },
+        onComplete: () => (hideWorkCat = false),
+      })
+      gsap.delayedCall(TURN_UP * 0.75, () => {
+        gsap.to(heroCat, {
+          out: 0,
+          duration: 0.9,
+          ease: "sine.inOut",
+          onUpdate: () => {
+            if (flip === "up" && heroCat.out < 0.5) {
+              flip = "none"
+              lenis.start()
+            }
+          },
+        })
       })
     })
   }
